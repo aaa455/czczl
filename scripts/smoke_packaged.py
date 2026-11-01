@@ -39,13 +39,16 @@ def main() -> int:
                 raise RuntimeError(f"Packaged startup timed out; see {output / log_name}")
 
     screenshot = output / "01-native-startup.png"
+    raw = json.loads((ROOT / "assets/content/nodes.json").read_text(encoding="utf-8"))
+    expected_nodes = len(raw["nodes"])
+    expected_questions = sum(len(node["questions"]) for node in raw["nodes"])
     assert run(["--smoke-check", str(screenshot), "--data-dir", str(output / "默认存档")],
                "native.log") == 0
     normal = json.loads(screenshot.with_suffix(".json").read_text(encoding="utf-8"))
-    assert normal["frozen"] and normal["nodes"] == 8 and normal["questions"] == 16
+    assert normal["frozen"] and normal["nodes"] == expected_nodes
+    assert normal["questions"] == expected_questions
     external = output / "外部内容包"
     external.mkdir(exist_ok=True)
-    raw = json.loads((ROOT / "assets/content/nodes.json").read_text(encoding="utf-8"))
     raw["id"] = "external-smoke-test"
     raw["nodes"] = raw["nodes"][:1]
     (external / "nodes.json").write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
@@ -53,7 +56,8 @@ def main() -> int:
     assert run(["--content-dir", str(external), "--smoke-check", str(custom_image),
                 "--data-dir", str(output / "外部包存档")], "external.log") == 0
     custom = json.loads(custom_image.with_suffix(".json").read_text(encoding="utf-8"))
-    assert custom["frozen"] and custom["nodes"] == 1 and custom["questions"] == 2
+    assert custom["frozen"] and custom["nodes"] == 1
+    assert custom["questions"] == len(raw["nodes"][0]["questions"])
     invalid_image = output / "03-invalid-content.png"
     assert run(["--content-dir", str(output / "不存在的内容目录"), "--smoke-check",
                 str(invalid_image), "--data-dir", str(output / "无效包存档")], "invalid.log") == 1
