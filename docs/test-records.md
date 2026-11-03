@@ -1,5 +1,7 @@
 # 桌面预览版验证记录
 
+学习过场模板的后续验证见 [2026年11月3日记录](test-records-cutscenes.md)。以下保留第一版原始证据。
+
 日期：2026年11月1日。功能代码提交：`cf2f616bda988e5d389b252c496fe8d2e211821b`。后续提交只调整打包核验脚本的动态题量读取并补充本报告，未改变应用功能。
 
 环境：Windows 11 x64，Python 3.12.14，PySide6 Essentials 6.12.0，PyInstaller 6.22.3。依赖清单见requirements-lock.txt。
