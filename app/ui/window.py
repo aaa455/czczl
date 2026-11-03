@@ -2,15 +2,16 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import (QFileDialog, QFrame, QGridLayout, QHBoxLayout,
     QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton,
-    QScrollArea, QSplitter, QVBoxLayout, QWidget)
+    QScrollArea, QSplitter, QStackedWidget, QVBoxLayout, QWidget)
 
 from app.learning import LearningService
 from app.ui.badge import BadgeExporter, PngBadgeExporter
 from app.ui.questions import QuestionViewRegistry, default_views
 from app.ui.route_map import RouteMap
+from app.ui.lesson_player import LearningPlayer, SceneRendererRegistry, default_scene_renderers
 
 
 def label(text: str, role: str = "body") -> QLabel:
@@ -33,12 +34,20 @@ def button(text: str, callback: Callable, secondary: bool = False) -> QPushButto
 class MainWindow(QMainWindow):
     def __init__(self, service: LearningService,
                  question_views: QuestionViewRegistry | None = None,
-                 badge_exporter: BadgeExporter | None = None):
+                 badge_exporter: BadgeExporter | None = None,
+                 content_dir: Path | None = None,
+                 scene_renderers: SceneRendererRegistry | None = None):
         super().__init__()
         self.service = service
         self.question_views = question_views or default_views()
         self.badge_exporter = badge_exporter or PngBadgeExporter()
+        self.content_dir = content_dir or Path(__file__).resolve().parents[2] / "assets/content"
+        self.scene_renderers = scene_renderers or default_scene_renderers()
+        self.player: LearningPlayer | None = None
         for node in service.pack.nodes:
+            for scene in service.lessons[node.id].scenes:
+                if not self.scene_renderers.supports(scene.kind):
+                    raise ValueError(f"分镜缺少渲染器：{scene.kind}")
             for question in node.questions:
                 if not self.question_views.supports(question.kind):
                     raise ValueError(f"题型缺少界面：{question.kind}")
@@ -113,7 +122,9 @@ class MainWindow(QMainWindow):
         splitter.setSizes([760, 440])
         splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 1)
-        root_layout.addWidget(splitter, 1)
+        self.content_stack = QStackedWidget()
+        self.content_stack.addWidget(splitter)
+        root_layout.addWidget(self.content_stack, 1)
         self.setCentralWidget(root)
         for name, factory in [("detail", self.detail_panel), ("quiz", self.quiz_panel),
                               ("summary", self.summary_panel), ("locked", self.locked_panel),
@@ -131,6 +142,10 @@ class MainWindow(QMainWindow):
         self._panels[name] = factory
 
     def show_panel(self, name: str) -> None:
+        self._leave_learning()
+        if name == "quiz" and not self.service.can_quiz(self.viewed_id):
+            self.start_learning()
+            return
         widget = self._panels[name]()
         old = self.scroll.takeWidget()
         if old is not None:
@@ -177,7 +192,10 @@ class MainWindow(QMainWindow):
             layout.addWidget(label(title, "section"))
             layout.addWidget(label(content, "muted" if title == "史料出处" else "body"))
         complete = self.service.completed(node.id)
-        layout.addWidget(button("复习本段题目" if complete else "开始知识检验", self.start_quiz))
+        layout.addWidget(button("重新观看本段学习" if self.service.lesson_learned(node.id)
+                                else "开始本段学习", self.start_learning))
+        if self.service.can_quiz(node.id):
+            layout.addWidget(button("复习本段题目" if complete else "继续答题", self.start_quiz, True))
         if complete:
             if index < len(self.service.pack.nodes) - 1:
                 next_id = self.service.pack.nodes[index + 1].id
@@ -195,11 +213,56 @@ class MainWindow(QMainWindow):
         return widget
 
     def start_quiz(self) -> None:
+        if not self.service.can_quiz(self.viewed_id):
+            self.start_learning()
+            return
         questions = self.service.node(self.viewed_id).questions
         self.quiz_index = next((i for i, q in enumerate(questions)
                                 if q.id not in self.service.progress.answers
                                 or not self.service.progress.answers[q.id].mastered), 0)
         self.show_panel("quiz")
+
+    def start_learning(self) -> None:
+        if not self.service.unlocked(self.viewed_id):
+            self.show_panel("locked")
+            return
+        self._leave_learning()
+        node = self.service.node(self.viewed_id)
+        player = LearningPlayer(self.service.lessons[node.id], node.name,
+                                self.content_dir, self.scene_renderers)
+        self.player = player
+        player.back_requested.connect(lambda: self.show_panel("detail"))
+        player.quiz_requested.connect(self._finish_learning)
+        self.content_stack.addWidget(player)
+        self.content_stack.setCurrentWidget(player)
+        player.start()
+
+    def _finish_learning(self) -> None:
+        try:
+            self.service.complete_lesson(self.viewed_id)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "学习记录未保存", f"{exc}\n请检查后重试，当前仍可查看学习小结。")
+            return
+        self.start_quiz()
+
+    def _leave_learning(self) -> None:
+        if self.player is not None:
+            player = self.player
+            self.player = None
+            player.stop()
+            self.content_stack.setCurrentIndex(0)
+            self.content_stack.removeWidget(player)
+            player.deleteLater()
+
+    def changeEvent(self, event):
+        if event.type() == QEvent.Type.ActivationChange and not self.isActiveWindow():
+            if getattr(self, "player", None) is not None:
+                self.player.pause()
+        super().changeEvent(event)
+
+    def closeEvent(self, event):
+        self._leave_learning()
+        super().closeEvent(event)
 
     def quiz_panel(self) -> QWidget:
         node = self.service.node(self.viewed_id)
@@ -302,7 +365,7 @@ class MainWindow(QMainWindow):
         widget, layout = self.new_panel("使用与来源", "让每一段学习有据可查")
         layout.addWidget(label(self.service.pack.scope))
         layout.addWidget(label("使用方法", "section"))
-        layout.addWidget(label("点击路线节点或下方按钮阅读故事；答题正确后可继续，答错可重试。进度自动保存在本机。顶部可查看回顾或重新开始。"))
+        layout.addWidget(label("点击路线节点，选择开始本段学习。过场支持暂停、手动翻页与自动翻页；查看小结后确认进入答题。学过的节点可重看或直接答题。答错可重试，进度自动保存在本机。"))
         layout.addWidget(label("内容状态", "section"))
         layout.addWidget(label("预览内容，史实、措辞和资料出处待团队核验。" if self.service.pack.review_status == "draft"
                                else "具体资料出处见各节点，内容由参赛团队维护。"))

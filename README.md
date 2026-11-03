@@ -1,8 +1,8 @@
 # 足迹长征 Windows桌面版
 
-参赛团队的原生桌面学习程序。采用纸墨配色、左侧路线与右侧内容面板，包含8个学习节点、16道题、顺序解锁、本地进度与PNG纪念徽章。
+参赛团队的原生桌面学习程序。采用纸墨配色、左侧路线与右侧内容面板，包含8个学习节点、24幕学习过场模板、16道题、顺序解锁、本地进度与PNG纪念徽章。
 
-当前为 **v0.1 开发预览**：程序流程已实现；历史内容、题目措辞与来源仍需要A核验，视觉效果由C继续完善。不是最终参赛定稿。
+当前为 **v0.2 学习过场模板预览**：程序流程已实现；过场图文尚为占位，历史内容、题目措辞与来源仍需要A核验，视觉效果由C继续完善。不是最终参赛定稿。
 
 ## 运行
 
@@ -15,6 +15,22 @@ py -3.12 -m venv .venv
 ```
 
 只运行源码可安装 `requirements.txt`。依赖使用PySide6 Essentials，提供Qt Widgets、Gui、Core，无需安装完整的WebEngine组件。
+
+## 学习过场模板
+
+点击“开始本段学习”进入大画面图文播放器：历史背景、事件经过、理解与思考，共三幕，每幕默认12秒。可暂停、上一幕/下一幕、开关自动翻页；切出窗口自动暂停，返回后由用户继续。查看小结后点击“已学习，开始答题”，保存学习标记并进入题目；不会自动提交答案。
+
+所有过场现为占位图文，方便先确认展示形式。A/C在 `assets/content/lessons.json` 修改每幕的 `title`、`text`、`image`、`image_alt`、`duration_ms`，以及每站 `summary` 即可填充内容。`image` 留空或图片加载失败时显示占位画面。详细格式与填充步骤见 [学习过场配置](docs/LESSONS.md)。
+
+直接预览当前站的过场：
+
+```powershell
+.\.venv\Scripts\python.exe main.py --preview-lesson
+# 或打包后
+.\dist\ZuJiChangZheng.exe --preview-lesson
+```
+
+学过的节点可直接继续答题，也可重新观看。未确认完成的过场退出后从第一幕重看。旧答题记录保留；已通关节点仍可直接复习。替换分镜配置会使该站学习标记需要更新，但不清空题目成绩。更换同路径图片的文件内容不会自动改变标记，正式替换时建议使用新文件名。
 
 ## 打包exe
 
@@ -48,7 +64,7 @@ py -3.12 -m venv .venv
 .\dist\ZuJiChangZheng.exe --content-dir "D:\我的内容包" --data-dir "D:\演示存档"
 ```
 
-外部目录内需有符合 [内容格式](docs/DATA.md) 的 `nodes.json`。参数缺省时使用内置内容和Windows用户应用数据目录；不向exe所在目录写进度。外部包是完整替换，不是增量合并。
+外部目录内需有符合 [内容格式](docs/DATA.md) 的 `nodes.json`，可同时提供 `lessons.json` 和它引用的相对路径图片。缺少学习配置的节点自动使用三幕占位模板。参数缺省时使用内置内容和Windows用户应用数据目录；不向exe所在目录写进度。外部包是完整替换，不是增量合并。
 
 题目、选项或顺序变化会保留旧存档备份并重新开始；仅修改故事、来源或界面样式不清空进度。同一时刻请只打开一个使用相同存档的程序实例；当前没有并发存档合并功能。
 
@@ -69,12 +85,15 @@ main.py                     组装内容、存档、规则与界面
 app/models.py               类型与Protocol接口
 app/content.py              JSON内容加载与校验
 app/learning.py              解锁、答题、统计与题型注册
+app/lessons.py               学习分镜加载、校验、占位与签名
 app/storage.py               原子存档与异常备份
 app/ui/route_map.py          原生路线绘图
 app/ui/questions.py          题型视图注册
 app/ui/window.py             窗口与面板注册
+app/ui/lesson_player.py      大画面学习播放器、动画与渲染器接口
 app/ui/badge.py              可替换的徽章导出
 assets/content/nodes.json    内容包
+assets/content/lessons.json  分镜图文、时长与学习小结
 assets/styles/theme.qss      视觉样式
 scripts/                    校验、界面冒烟、打包脚本
 tests/                      内容与学习规则测试

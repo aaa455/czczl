@@ -44,6 +44,25 @@ class ContentPack:
     nodes: tuple[Node, ...]
 
 
+@dataclass(frozen=True)
+class LearningScene:
+    id: str
+    title: str
+    text: str
+    image: str = ""
+    image_alt: str = "学习配图占位"
+    duration_ms: int = 12000
+    transition: str = "fade"
+    kind: str = "image_text"
+
+
+@dataclass(frozen=True)
+class Lesson:
+    node_id: str
+    scenes: tuple[LearningScene, ...]
+    summary: str
+
+
 @dataclass
 class Attempt:
     first_correct: bool
@@ -56,6 +75,7 @@ class Progress:
     pack_id: str
     content_signature: str
     answers: dict[str, Attempt] = field(default_factory=dict)
+    learned_lessons: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

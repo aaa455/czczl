@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app.content import ContentError, JsonContentRepository
 from app.learning import LearningService
+from app.lessons import JsonLessonRepository
 from app.storage import JsonProgressStore
 from app.ui.window import MainWindow
 
@@ -23,6 +24,7 @@ def main() -> int:
     parser.add_argument("--content-dir", type=Path, help="外部内容目录，内含 nodes.json")
     parser.add_argument("--data-dir", type=Path, help="指定独立存档目录，用于测试或演示")
     parser.add_argument("--smoke-check", type=Path, help="生成界面截图及JSON报告后退出")
+    parser.add_argument("--preview-lesson", action="store_true", help="启动后直接预览当前节点学习过场")
     args = parser.parse_args()
     app = QApplication(sys.argv[:1])
     app.setApplicationName("ZuJiChangZheng")
@@ -36,8 +38,9 @@ def main() -> int:
         data_dir = args.data_dir or Path(QStandardPaths.writableLocation(
             QStandardPaths.StandardLocation.AppLocalDataLocation))
         store = JsonProgressStore(data_dir / f"{pack.id}.json")
-        service = LearningService(pack, store)
-        window = MainWindow(service)
+        lessons = JsonLessonRepository(content_dir).load(pack)
+        service = LearningService(pack, store, lessons=lessons)
+        window = MainWindow(service, content_dir=content_dir)
     except (ContentError, ValueError, OSError) as exc:
         if args.smoke_check:
             args.smoke_check.parent.mkdir(parents=True, exist_ok=True)
@@ -46,6 +49,8 @@ def main() -> int:
             QMessageBox.critical(None, "无法启动", str(exc))
         return 1
     window.show()
+    if args.preview_lesson:
+        window.start_learning()
     if args.smoke_check:
         import json
         def capture():
@@ -57,6 +62,8 @@ def main() -> int:
                     "ok": True, "nodes": len(pack.nodes),
                     "questions": service.summary().total_questions,
                     "frozen": bool(getattr(sys, "frozen", False)),
+                    "lesson_preview": window.player is not None,
+                    "lesson_scenes": len(service.lessons[service.current_node().id].scenes),
                     "content_directory": str(content_dir), "data_directory": str(data_dir),
                 }, ensure_ascii=False, indent=2), encoding="utf-8")
                 app.exit(0)

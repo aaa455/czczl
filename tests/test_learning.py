@@ -21,8 +21,10 @@ class LearningTests(unittest.TestCase):
         self.store = JsonProgressStore(self.path)
         self.pack = JsonContentRepository(CONTENT).load()
         self.service = LearningService(self.pack, self.store)
+        self.service.complete_lesson(self.pack.nodes[0].id)
 
     def finish_node(self, node):
+        self.service.complete_lesson(node.id)
         for question in node.questions:
             self.service.submit(node.id, question.id, question.answer)
 
@@ -30,7 +32,7 @@ class LearningTests(unittest.TestCase):
         node = self.pack.nodes[1]
         with self.assertRaisesRegex(ValueError, "前面"):
             self.service.submit(node.id, node.questions[0].id, node.questions[0].answer)
-        self.assertFalse(self.path.exists())
+        self.assertEqual(self.service.progress.answers, {})
 
     def test_retry_preserves_first_result_and_does_not_double_count(self):
         node = self.pack.nodes[0]
@@ -111,6 +113,7 @@ class LearningTests(unittest.TestCase):
         question = replace(node.questions[0], kind="multiple_choice", answer=("a", "b"))
         pack = replace(self.pack, nodes=(replace(node, questions=(question,)),))
         service = LearningService(pack, self.store)
+        service.complete_lesson(node.id)
         self.assertFalse(service.submit(node.id, question.id, ("a",)).correct)
         self.assertTrue(service.submit(node.id, question.id, ("b", "a")).correct)
         registry = default_registry()
@@ -118,6 +121,7 @@ class LearningTests(unittest.TestCase):
         custom_q = replace(question, kind="custom")
         custom_pack = replace(pack, nodes=(replace(node, questions=(custom_q,)),))
         custom = LearningService(custom_pack, self.store, registry)
+        custom.complete_lesson(node.id)
         self.assertTrue(custom.submit(node.id, question.id, ("c",)).correct)
 
     def test_reset_persists(self):

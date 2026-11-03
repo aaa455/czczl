@@ -42,7 +42,11 @@ class JsonProgressStore:
                         or (item["first_correct"] and not item["mastered"])):
                     raise ValueError("答题记录字段无效")
                 answers[qid] = Attempt(item["first_correct"], item["mastered"], item["submissions"])
-            return Progress(pack_id, signature, answers)
+            learned = raw.get("learned_lessons", {})
+            if not isinstance(learned, dict) or any(
+                    not isinstance(k, str) or not isinstance(v, str) for k, v in learned.items()):
+                raise ValueError("学习完成记录无效")
+            return Progress(pack_id, signature, answers, learned)
         except (ValueError, UnicodeError, TypeError):
             self._archive("存档格式异常")
             return fresh

@@ -2,6 +2,8 @@
 
 A主要维护 `assets/content/nodes.json`，UTF-8编码。数组顺序就是学习顺序，增加或减少节点不用改界面代码。运行 `scripts/validate_data.py` 检查格式。
 
+新增可选旁文件 `lessons.json`，用于每站答题前的学习过场；它不改变原nodes.json格式。图片与文字配置详见 [学习过场配置](LESSONS.md)。
+
 ## 顶层
 
 | 字段 | 约定 |

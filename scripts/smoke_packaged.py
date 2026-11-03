@@ -47,6 +47,11 @@ def main() -> int:
     normal = json.loads(screenshot.with_suffix(".json").read_text(encoding="utf-8"))
     assert normal["frozen"] and normal["nodes"] == expected_nodes
     assert normal["questions"] == expected_questions
+    lesson_image = output / "04-learning-preview.png"
+    assert run(["--preview-lesson", "--smoke-check", str(lesson_image), "--data-dir",
+                str(output / "学习模板存档")], "lesson.log") == 0
+    preview = json.loads(lesson_image.with_suffix(".json").read_text(encoding="utf-8"))
+    assert preview["frozen"] and preview["lesson_preview"] and preview["lesson_scenes"] >= 1
     external = output / "外部内容包"
     external.mkdir(exist_ok=True)
     raw["id"] = "external-smoke-test"
@@ -65,7 +70,7 @@ def main() -> int:
     report = {"ok": True, "exe_bytes": exe.stat().st_size,
               "sha256": hashlib.sha256(exe.read_bytes()).hexdigest(),
               "checks": ["frozen native startup", "Chinese executable and directory paths",
-                         "PATH without Python", "external content replacement",
+                         "PATH without Python", "frozen lesson preview", "external content replacement",
                          "invalid content controlled exit"]}
     (output / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps(report))

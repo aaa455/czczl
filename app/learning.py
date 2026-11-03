@@ -5,8 +5,9 @@ from dataclasses import asdict
 import hashlib
 import json
 
+from app.lessons import lesson_signature, placeholder_lesson
 from app.models import (AnswerResult, Attempt, ContentPack, LearningSummary,
-                        Node, ProgressStore, Question)
+                        Lesson, Node, ProgressStore, Question)
 
 Evaluator = Callable[[Question, tuple[str, ...]], bool]
 
@@ -43,9 +44,13 @@ def content_signature(pack: ContentPack) -> str:
 
 class LearningService:
     def __init__(self, pack: ContentPack, store: ProgressStore,
-                 registry: QuestionRegistry | None = None):
+                 registry: QuestionRegistry | None = None,
+                 lessons: dict[str, Lesson] | None = None):
         self.pack, self.store = pack, store
         self.registry = registry or default_registry()
+        self.lessons = {n.id: placeholder_lesson(n) for n in pack.nodes}
+        if lessons is not None:
+            self.lessons.update(lessons)
         for node in pack.nodes:
             for question in node.questions:
                 if not self.registry.supports(question.kind):
@@ -73,10 +78,27 @@ class LearningService:
         return next((n for n in self.pack.nodes if not self.completed(n.id)),
                     self.pack.nodes[-1])
 
+    def lesson_learned(self, node_id: str) -> bool:
+        return self.progress.learned_lessons.get(node_id) == lesson_signature(self.lessons[node_id])
+
+    def complete_lesson(self, node_id: str) -> None:
+        if not self.unlocked(node_id):
+            raise ValueError("请先完成前面的学习节点")
+        updated = deepcopy(self.progress)
+        updated.learned_lessons[node_id] = lesson_signature(self.lessons[node_id])
+        self.store.save(updated)
+        self.progress = updated
+
+    def can_quiz(self, node_id: str) -> bool:
+        # Previously completed nodes remain available for review after upgrading.
+        return self.unlocked(node_id) and (self.lesson_learned(node_id) or self.completed(node_id))
+
     def submit(self, node_id: str, question_id: str,
                selected: tuple[str, ...]) -> AnswerResult:
         if not self.unlocked(node_id):
             raise ValueError("请先完成前面的学习节点")
+        if not self.can_quiz(node_id):
+            raise ValueError("请先完成本段学习，再开始答题")
         question = next((q for q in self.node(node_id).questions if q.id == question_id), None)
         if question is None:
             raise ValueError("题目不存在")

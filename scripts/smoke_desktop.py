@@ -14,6 +14,7 @@ from PySide6.QtGui import QFont, QFontDatabase, QImage
 from PySide6.QtWidgets import QApplication
 from app.content import JsonContentRepository
 from app.learning import LearningService
+from app.lessons import JsonLessonRepository
 from app.storage import JsonProgressStore
 from app.ui.badge import PngBadgeExporter
 from app.ui.window import MainWindow
@@ -36,7 +37,8 @@ def main() -> int:
     pack = JsonContentRepository(ROOT / "assets/content").load()
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "progress.json"
-        service = LearningService(pack, JsonProgressStore(path))
+        service = LearningService(pack, JsonProgressStore(path),
+                                  lessons=JsonLessonRepository(ROOT / "assets/content").load(pack))
         window = MainWindow(service)
         window.show()
         app.processEvents()
@@ -46,6 +48,26 @@ def main() -> int:
         for index, node in enumerate(pack.nodes):
             window.select_node(node.id)
             window.start_quiz()
+            player = window.player
+            assert player is not None  # New learners are directed into the lesson first.
+            player.auto.setChecked(False)
+            if index == 0:
+                player.animation.setCurrentTime(1000)
+                player.pause()
+                app.processEvents()
+                assert window.grab().save(str(args.output / "06-learning-scene.png"))
+                window.resize(1060, 700)
+                app.processEvents()
+                assert window.grab().save(str(args.output / "07-learning-small.png"))
+                window.resize(1240, 820)
+            for _ in service.lessons[node.id].scenes:
+                player.next_button.click()
+            assert player.pages.currentIndex() == 1
+            if index == 0:
+                app.processEvents()
+                assert window.grab().save(str(args.output / "08-learning-summary.png"))
+            player.quiz_button.click()
+            assert window.player is None and service.lesson_learned(node.id)
             for qi, question in enumerate(node.questions):
                 app.processEvents()
                 if index == 0 and qi == 0:
@@ -81,7 +103,8 @@ def main() -> int:
         window.close()
         report = {"ok": True, "nodes": len(pack.nodes), "questions": summary.total_questions,
                   "first_correct": summary.first_correct,
-                  "checks": ["locked-node view", "wrong-answer retry", "all nodes through UI",
+                  "checks": ["locked-node view", "lesson gate and explicit quiz handoff for all nodes",
+                             "lesson pause, manual navigation and summary", "wrong-answer retry", "all nodes through UI",
                              "persistent progress", "badge PNG", "review at minimum size"]}
         (args.output / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(json.dumps(report))
