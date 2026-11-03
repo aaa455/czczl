@@ -113,7 +113,7 @@ class LessonTests(unittest.TestCase):
             with self.subTest(path=path), self.assertRaises(ContentError):
                 resolve_image(self.directory, path)
         self.assertEqual(resolve_image(self.directory, "images/test.png"),
-                         self.directory / "images/test.png")
+                         (self.directory / "images/test.png").resolve())
 
 
 if __name__ == "__main__":
