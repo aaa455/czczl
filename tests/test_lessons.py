@@ -19,7 +19,9 @@ class LessonTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.directory = Path(self.tmp.name)
         self.store = JsonProgressStore(self.directory / "progress.json")
-        self.pack = JsonContentRepository(CONTENT).load()
+        pack = JsonContentRepository(CONTENT).load()
+        self.pack = replace(pack, quiz_size=None,
+                            nodes=tuple(replace(n, questions=n.questions[:2]) for n in pack.nodes))
         self.lessons = JsonLessonRepository(CONTENT).load(self.pack)
         self.service = LearningService(self.pack, self.store, lessons=self.lessons)
 

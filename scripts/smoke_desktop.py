@@ -10,7 +10,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QFontDatabase, QImage
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from app.content import JsonContentRepository
 from app.learning import LearningService
@@ -50,25 +52,55 @@ def main() -> int:
             window.start_quiz()
             player = window.player
             assert player is not None  # New learners are directed into the lesson first.
-            player.auto.setChecked(False)
+            if player.paused:
+                player.toggle_pause()
+            if index == 0:
+                frames = args.output / "entrance-frames"
+                frames.mkdir(exist_ok=True)
+                for elapsed in range(0, 850, 50):
+                    player.entrance_animation.setCurrentTime(elapsed)
+                    app.processEvents()
+                    assert window.grab().save(str(frames / f"{elapsed:04}.png"))
+                for elapsed, name in [(0, "11-entry-route"), (180, "12-entry-dim"),
+                                      (450, "13-entry-background"), (650, "14-entry-text")]:
+                    player.entrance_animation.setCurrentTime(elapsed)
+                    app.processEvents()
+                    assert player.animation.currentTime() == 0
+                    assert window.grab().save(str(args.output / f"{name}.png"))
+            player.entrance_animation.setCurrentTime(850)
+            app.processEvents()
+            assert not player.entering
+            if index == 0:
+                assert window.grab().save(str(frames / "0850.png"))
             if index == 0:
                 player.animation.setCurrentTime(1000)
+                if player.paused:
+                    player.toggle_pause()
+                app.processEvents()
+                player._refresh_glass()
+                assert window.grab().save(str(args.output / "10-learning-playing.png"))
                 player.pause()
                 app.processEvents()
+                player._refresh_glass()
                 assert window.grab().save(str(args.output / "06-learning-scene.png"))
                 window.resize(1060, 700)
                 app.processEvents()
+                player._refresh_glass()
                 assert window.grab().save(str(args.output / "07-learning-small.png"))
                 window.resize(1240, 820)
             for _ in service.lessons[node.id].scenes:
-                player.next_button.click()
-            assert player.pages.currentIndex() == 1
+                player.next_scene()
+            assert player.summary_visible
             if index == 0:
                 app.processEvents()
+                player._refresh_glass()
                 assert window.grab().save(str(args.output / "08-learning-summary.png"))
-            player.quiz_button.click()
+            QTest.mouseClick(player.scene_text, Qt.MouseButton.LeftButton)
             assert window.player is None and service.lesson_learned(node.id)
-            for qi, question in enumerate(node.questions):
+            questions = service.questions_for(node.id)
+            assert len(questions) == service.quiz_count(node.id)
+            assert len({q.id for q in questions}) == len(questions)
+            for qi, question in enumerate(questions):
                 app.processEvents()
                 if index == 0 and qi == 0:
                     wrong = next(key for key, _ in window.answer_widget.buttons if key not in question.answer)
@@ -91,7 +123,10 @@ def main() -> int:
         summary = service.summary()
         assert summary.completed_nodes == len(pack.nodes)
         assert summary.first_correct == summary.total_questions - 1
-        assert LearningService(pack, JsonProgressStore(path)).summary() == summary
+        restored = LearningService(pack, JsonProgressStore(path))
+        assert restored.summary() == summary
+        for node in pack.nodes:
+            assert restored.questions_for(node.id) == service.questions_for(node.id)
         badge = args.output / "04-badge.png"
         PngBadgeExporter().export(badge, "长征学习者", summary)
         assert QImage(str(badge)).width() == 900
@@ -103,9 +138,10 @@ def main() -> int:
         window.close()
         report = {"ok": True, "nodes": len(pack.nodes), "questions": summary.total_questions,
                   "first_correct": summary.first_correct,
+                  "bank_questions": sum(len(n.questions) for n in pack.nodes),
                   "checks": ["locked-node view", "lesson gate and explicit quiz handoff for all nodes",
-                             "lesson pause, manual navigation and summary", "wrong-answer retry", "all nodes through UI",
-                             "persistent progress", "badge PNG", "review at minimum size"]}
+                             "entrance transition and deferred reading clock", "lesson pause, manual navigation and summary", "wrong-answer retry", "all nodes through UI",
+                             "persistent progress and random question/option order", "badge PNG", "review at minimum size"]}
         (args.output / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(json.dumps(report))
     return 0

@@ -55,6 +55,12 @@ def main() -> int:
         import json
         def capture():
             try:
+                # Do not capture the paused route snapshot during an entrance preview.
+                if window.player is not None and window.player.entering:
+                    if window.player.paused:
+                        window.player.toggle_pause()
+                    QTimer.singleShot(200, capture)
+                    return
                 args.smoke_check.parent.mkdir(parents=True, exist_ok=True)
                 if not window.grab().save(str(args.smoke_check), "PNG"):
                     raise OSError("截图写入失败")
@@ -69,7 +75,7 @@ def main() -> int:
                 app.exit(0)
             except OSError:
                 app.exit(1)
-        QTimer.singleShot(500, capture)
+        QTimer.singleShot(1100 if args.preview_lesson else 500, capture)
     elif store.notice:
         QTimer.singleShot(0, lambda: QMessageBox.information(window, "存档说明", store.notice))
     return app.exec()

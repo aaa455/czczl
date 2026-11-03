@@ -41,7 +41,8 @@ def main() -> int:
     screenshot = output / "01-native-startup.png"
     raw = json.loads((ROOT / "assets/content/nodes.json").read_text(encoding="utf-8"))
     expected_nodes = len(raw["nodes"])
-    expected_questions = sum(len(node["questions"]) for node in raw["nodes"])
+    expected_questions = sum(min(raw.get("quiz_size") or len(node["questions"]), len(node["questions"]))
+                             for node in raw["nodes"])
     assert run(["--smoke-check", str(screenshot), "--data-dir", str(output / "默认存档")],
                "native.log") == 0
     normal = json.loads(screenshot.with_suffix(".json").read_text(encoding="utf-8"))
@@ -62,7 +63,8 @@ def main() -> int:
                 "--data-dir", str(output / "外部包存档")], "external.log") == 0
     custom = json.loads(custom_image.with_suffix(".json").read_text(encoding="utf-8"))
     assert custom["frozen"] and custom["nodes"] == 1
-    assert custom["questions"] == len(raw["nodes"][0]["questions"])
+    assert custom["questions"] == min(raw.get("quiz_size") or len(raw["nodes"][0]["questions"]),
+                                      len(raw["nodes"][0]["questions"]))
     invalid_image = output / "03-invalid-content.png"
     assert run(["--content-dir", str(output / "不存在的内容目录"), "--smoke-check",
                 str(invalid_image), "--data-dir", str(output / "无效包存档")], "invalid.log") == 1

@@ -22,6 +22,12 @@ def main() -> int:
                 if scene.kind != "image_text":
                     raise ValueError(f"尚未注册分镜类型：{scene.kind}")
         print(f"PASS: {len(pack.nodes)} nodes, {sum(len(n.questions) for n in pack.nodes)} questions")
+        if pack.quiz_size is not None:
+            total = sum(min(pack.quiz_size, len(n.questions)) for n in pack.nodes)
+            print(f"PASS: random quiz size {pack.quiz_size}, {total} questions per journey; options shuffled")
+            for node in pack.nodes:
+                if len(node.questions) < pack.quiz_size:
+                    print(f"NOTE: {node.id} has fewer questions; using all {len(node.questions)}")
         print(f"PASS: {sum(len(lesson.scenes) for lesson in lessons.values())} learning scenes")
         if pack.review_status == "draft":
             print("NOTE: Content is a draft. Historical sources still require team review.")

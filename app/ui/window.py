@@ -63,6 +63,7 @@ class MainWindow(QMainWindow):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
         header = QFrame()
+        self.header = header
         header.setObjectName("header")
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(25, 18, 25, 18)
@@ -142,10 +143,13 @@ class MainWindow(QMainWindow):
         self._panels[name] = factory
 
     def show_panel(self, name: str) -> None:
-        self._leave_learning()
         if name == "quiz" and not self.service.can_quiz(self.viewed_id):
             self.start_learning()
             return
+        if name == "quiz" and not self.service.questions_for(self.viewed_id):
+            self.start_quiz()
+            return
+        self._leave_learning()
         widget = self._panels[name]()
         old = self.scroll.takeWidget()
         if old is not None:
@@ -192,6 +196,9 @@ class MainWindow(QMainWindow):
             layout.addWidget(label(title, "section"))
             layout.addWidget(label(content, "muted" if title == "史料出处" else "body"))
         complete = self.service.completed(node.id)
+        if self.service.pack.quiz_size is not None:
+            layout.addWidget(label(f"本章题库 {len(node.questions)} 题，每轮随机抽取 {self.service.quiz_count(node.id)} 题，选项随机排列。"
+                                  "本轮题目与顺序自动保存，退出后可继续；复习沿用本轮，重新出发后重抽。", "muted"))
         layout.addWidget(button("重新观看本段学习" if self.service.lesson_learned(node.id)
                                 else "开始本段学习", self.start_learning))
         if self.service.can_quiz(node.id):
@@ -216,17 +223,26 @@ class MainWindow(QMainWindow):
         if not self.service.can_quiz(self.viewed_id):
             self.start_learning()
             return
-        questions = self.service.node(self.viewed_id).questions
+        try:
+            questions = self.service.start_quiz(self.viewed_id)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "本轮题目未保存", f"{exc}\n请检查后重试，当前学习进度保留。")
+            return
         self.quiz_index = next((i for i, q in enumerate(questions)
                                 if q.id not in self.service.progress.answers
                                 or not self.service.progress.answers[q.id].mastered), 0)
         self.show_panel("quiz")
 
     def start_learning(self) -> None:
+        if self.player is not None and self.player.entering:
+            return
         if not self.service.unlocked(self.viewed_id):
             self.show_panel("locked")
             return
         self._leave_learning()
+        # Capture before changing window chrome so the old layout never flashes.
+        route_snapshot = self.centralWidget().grab()
+        self._set_learning_mode(True)
         node = self.service.node(self.viewed_id)
         player = LearningPlayer(self.service.lessons[node.id], node.name,
                                 self.content_dir, self.scene_renderers)
@@ -235,7 +251,7 @@ class MainWindow(QMainWindow):
         player.quiz_requested.connect(self._finish_learning)
         self.content_stack.addWidget(player)
         self.content_stack.setCurrentWidget(player)
-        player.start()
+        player.start(entrance_snapshot=route_snapshot)
 
     def _finish_learning(self) -> None:
         try:
@@ -245,7 +261,25 @@ class MainWindow(QMainWindow):
             return
         self.start_quiz()
 
-    def _leave_learning(self) -> None:
+    def _set_learning_mode(self, enabled: bool) -> None:
+        """Hide window chrome during learning and restore the route window on exit."""
+        self.header.setVisible(not enabled)
+        self.statusBar().setVisible(not enabled)
+        if enabled:
+            self._route_window_flags = self.windowFlags()
+            self._route_geometry = self.geometry()
+            self._route_maximized = self.isMaximized()
+            self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+        else:
+            self.setWindowFlags(self._route_window_flags)
+        if self._route_maximized:
+            self.showMaximized()
+        else:
+            self.showNormal()
+            self.setGeometry(self._route_geometry)
+        self.activateWindow()
+
+    def _leave_learning(self, restore_window: bool = True) -> None:
         if self.player is not None:
             player = self.player
             self.player = None
@@ -253,6 +287,8 @@ class MainWindow(QMainWindow):
             self.content_stack.setCurrentIndex(0)
             self.content_stack.removeWidget(player)
             player.deleteLater()
+            if restore_window:
+                self._set_learning_mode(False)
 
     def changeEvent(self, event):
         if event.type() == QEvent.Type.ActivationChange and not self.isActiveWindow():
@@ -261,13 +297,14 @@ class MainWindow(QMainWindow):
         super().changeEvent(event)
 
     def closeEvent(self, event):
-        self._leave_learning()
+        self._leave_learning(restore_window=False)
         super().closeEvent(event)
 
     def quiz_panel(self) -> QWidget:
         node = self.service.node(self.viewed_id)
-        question = node.questions[self.quiz_index]
-        widget, layout = self.new_panel(f"知识检验 · {self.quiz_index + 1}/{len(node.questions)}",
+        questions = self.service.questions_for(node.id)
+        question = questions[self.quiz_index]
+        widget, layout = self.new_panel(f"知识检验 · {self.quiz_index + 1}/{len(questions)}",
                                         node.name, "多选题：选中所有正确项" if question.kind == "multiple_choice"
                                         else "单选题 · 答错可重试，首次结果单独记录")
         layout.addWidget(label(question.prompt))
@@ -278,7 +315,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.feedback_label)
         self.submit_button = button("提交答案", self.submit_answer)
         layout.addWidget(self.submit_button)
-        self.next_button = button("下一题" if self.quiz_index + 1 < len(node.questions)
+        self.next_button = button("下一题" if self.quiz_index + 1 < len(questions)
                                   else "完成本段 · 返回路线", self.next_question)
         self.next_button.hide()
         layout.addWidget(self.next_button)
@@ -288,7 +325,7 @@ class MainWindow(QMainWindow):
 
     def submit_answer(self) -> None:
         node = self.service.node(self.viewed_id)
-        question = node.questions[self.quiz_index]
+        question = self.service.questions_for(node.id)[self.quiz_index]
         try:
             result = self.service.submit(node.id, question.id, self.answer_widget.selected())
         except (ValueError, OSError) as exc:
@@ -307,7 +344,7 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def next_question(self) -> None:
-        if self.quiz_index + 1 < len(self.service.node(self.viewed_id).questions):
+        if self.quiz_index + 1 < len(self.service.questions_for(self.viewed_id)):
             self.quiz_index += 1
             self.show_panel("quiz")
         else:
@@ -365,7 +402,11 @@ class MainWindow(QMainWindow):
         widget, layout = self.new_panel("使用与来源", "让每一段学习有据可查")
         layout.addWidget(label(self.service.pack.scope))
         layout.addWidget(label("使用方法", "section"))
-        layout.addWidget(label("点击路线节点，选择开始本段学习。过场支持暂停、手动翻页与自动翻页；查看小结后确认进入答题。学过的节点可重看或直接答题。答错可重试，进度自动保存在本机。"))
+        if self.service.pack.quiz_size is not None:
+            layout.addWidget(label(f"每章随机抽取{self.service.pack.quiz_size}题（题库不足时使用全部题目），同时打乱选项。"
+                                  "本轮抽题与选项顺序保存在本机，重试、返回和重启不会换题。完成本轮全部题目后解锁下一章，"
+                                  "复习沿用本轮，重新出发后重新抽取。"))
+        layout.addWidget(label("点击路线节点，选择开始本段学习。过场自动播放，点击文字框或按右方向键翻页，左方向键回看，空格暂停或继续；切出窗口会暂停，点击文字框继续。小结出现后点击文字框或按回车确认答题，R键重看整段，右上角退出或Esc返回路线。长文字可在框内滚动阅读。学过的节点可重看或直接答题，进度自动保存在本机。"))
         layout.addWidget(label("内容状态", "section"))
         layout.addWidget(label("预览内容，史实、措辞和资料出处待团队核验。" if self.service.pack.review_status == "draft"
                                else "具体资料出处见各节点，内容由参赛团队维护。"))

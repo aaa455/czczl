@@ -1,35 +1,22 @@
-"""Reusable image/text cutscene player. All scene content comes from Lesson data."""
+"""Full-window learning scenes with a reusable, translucent reading overlay."""
 from collections.abc import Callable
+import math
 from pathlib import Path
 
-from PySide6.QtCore import Property, QPointF, QRectF, Qt, QPropertyAnimation, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
-from PySide6.QtWidgets import (QCheckBox, QFrame, QHBoxLayout, QLabel, QProgressBar,
-    QPushButton, QScrollArea, QSplitter, QStackedWidget, QVBoxLayout, QWidget)
+from PySide6.QtCore import (Property, QEasingCurve, QEvent, QPoint, QPointF, QRectF, Qt,
+                           QPropertyAnimation, QTimer, Signal)
+from PySide6.QtGui import (QColor, QImage, QLinearGradient, QPainter,
+                          QPainterPath, QPen, QPixmap, QShortcut, QKeySequence)
+from PySide6.QtWidgets import (QFrame, QGraphicsBlurEffect, QGraphicsDropShadowEffect,
+    QGraphicsPixmapItem, QGraphicsScene, QLabel, QPushButton, QScrollArea,
+    QStackedWidget, QVBoxLayout, QWidget)
 
 from app.lessons import resolve_image
 from app.models import LearningScene, Lesson
 
 
-def text_label(text: str, name: str = "body") -> QLabel:
-    item = QLabel(text)
-    item.setObjectName(name)
-    item.setWordWrap(True)
-    item.setTextFormat(Qt.TextFormat.PlainText)
-    item.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-    return item
-
-
-def control(text: str, callback: Callable, secondary: bool = False) -> QPushButton:
-    item = QPushButton(text)
-    item.setProperty("secondary", secondary)
-    item.setMinimumHeight(42)
-    item.clicked.connect(lambda checked=False: callback())
-    return item
-
-
 class SceneVisual(QWidget):
-    """Renderer base: subclass paintEvent, use phase for animation; no private timers."""
+    """Renderer extension: paint over the whole widget and use the shared phase clock."""
     def __init__(self):
         super().__init__()
         self._phase = 0.0
@@ -53,52 +40,39 @@ class ImageTextVisual(SceneVisual):
         self.image_state = "已加载配图" if not self.pixmap.isNull() else (
             "配图暂不可用 · 使用占位画面" if scene.image else "图片占位 · 待补充素材")
         self.setAccessibleName(scene.image_alt + "；" + self.image_state)
-        self.setMinimumSize(350, 270)
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QColor("#efe5d0"))
-        painter.save()
-        # Ease in only the illustration: learning text stays visible and stable.
-        if self.scene.transition == "fade":
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing |
+                               QPainter.RenderHint.SmoothPixmapTransform)
+        painter.fillRect(self.rect(), QColor("#a4afa2"))
+        if self.scene.transition == "fade" and not getattr(self, "entrance_prepared", False):
             painter.setOpacity(min(1.0, 0.12 + self._phase * self.scene.duration_ms / 600))
         if not self.pixmap.isNull():
-            # Fit the whole image; the modest animated zoom never crops its contents.
-            bounds = QRectF(18, 18, self.width() - 36, self.height() - 82)
-            size = self.pixmap.size().toSizeF()
-            ratio = min(bounds.width() / size.width(), bounds.height() / size.height())
-            ratio *= 0.96 + self._phase * 0.04
-            target = QRectF(0, 0, size.width() * ratio, size.height() * ratio)
-            target.moveCenter(bounds.center())
-            painter.drawPixmap(target, self.pixmap, QRectF(self.pixmap.rect()))
+            # Deliberately stretch to the complete client area, as requested.
+            painter.drawPixmap(QRectF(self.rect()), self.pixmap, QRectF(self.pixmap.rect()))
         else:
-            # Deliberately abstract artwork, not a pretend historical photograph.
-            for row, color in [(0.52, "#d7c8a9"), (0.68, "#cbb894"), (0.86, "#bda780")]:
-                ridge = QPainterPath(QPointF(-20, self.height()))
-                ridge.lineTo(-20, self.height() * row)
-                offset = self._phase * 12
-                for i in range(10):
-                    ridge.lineTo(i * self.width() / 8 - offset,
-                                 self.height() * row - (55 if i % 2 else 0))
-                ridge.lineTo(self.width() + 20, self.height())
+            sky = QLinearGradient(0, 0, self.width() * .5, self.height())
+            sky.setColorAt(0, QColor("#ddd7bc"))
+            sky.setColorAt(.45, QColor("#a4afa2"))
+            sky.setColorAt(1, QColor("#506e65"))
+            painter.fillRect(self.rect(), sky)
+            # Abstract placeholder scenery; no titles or image-state banners over it.
+            for base, amplitude, phase, color in [
+                (.38, .065, 1.8, "#96a398"), (.45, .09, 4.4, "#80958b"),
+                (.53, .11, 2.1, "#68857b"), (.66, .13, 5.2, "#506f65"),
+                (.8, .15, .9, "#34584f"),
+            ]:
+                ridge = QPainterPath(QPointF(-10, self.height()))
+                for x in range(-10, self.width() + 11, 4):
+                    u = x / max(1, self.width()) * 1920
+                    wave = (.54 * math.sin(u / 180 + phase) +
+                            .24 * math.sin(u / 76 + phase * 2) +
+                            .13 * math.sin(u / 32 + phase * .7))
+                    ridge.lineTo(x, self.height() * (base + amplitude * wave))
+                ridge.lineTo(self.width() + 10, self.height())
                 ridge.closeSubpath()
                 painter.fillPath(ridge, QColor(color))
-            painter.setPen(QColor("#9b7952"))
-            painter.setFont(QFont("SimSun", 26))
-            painter.drawText(QRectF(25, 25, self.width() - 50, 70),
-                             Qt.AlignmentFlag.AlignCenter, "学习画面占位")
-            painter.setFont(QFont("Microsoft YaHei UI", 13))
-            painter.drawText(QRectF(25, 100, self.width() - 50, 60),
-                             Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap,
-                             self.node_name)
-        painter.restore()
-        painter.fillRect(QRectF(0, self.height() - 48, self.width(), 48), QColor("#e7dbc2"))
-        painter.setPen(QColor("#705c41"))
-        painter.setFont(QFont("Microsoft YaHei UI", 10))
-        painter.drawText(QRectF(16, self.height() - 45, self.width() - 32, 42),
-                         Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap,
-                         self.image_state)
         painter.end()
 
 
@@ -124,6 +98,181 @@ def default_scene_renderers() -> SceneRendererRegistry:
     return registry
 
 
+class GlassTextPanel(QWidget):
+    """Full-width smoky glass, fading from a dark centre to transparent sides."""
+    activated = Signal()
+    EDGE_ALPHA = 8
+    CENTRE_ALPHA = 116
+
+    def __init__(self, parent: QWidget):
+        super().__init__(parent)
+        self.setObjectName("glassPanel")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._backdrop = QPixmap()
+        self._backdrop_offset = QPoint()
+        self._press_position = None
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 20, 28, 20)
+        layout.setSpacing(8)
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.text = QLabel()
+        self.text.setObjectName("cinematicText")
+        self.text.setWordWrap(True)
+        self.text.setTextFormat(Qt.TextFormat.PlainText)
+        self.text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.scroll.setWidget(self.text)
+        layout.addWidget(self.scroll, 1)
+        self.hint = QLabel()
+        self.hint.setObjectName("cinematicHint")
+        self.hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.hint.setTextFormat(Qt.TextFormat.PlainText)
+        self.hint.hide()
+        layout.addWidget(self.hint)
+        for widget in (self, self.scroll.viewport(), self.text, self.hint):
+            widget.installEventFilter(self)
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(40)
+        shadow.setOffset(0, 12)
+        shadow.setColor(QColor(0, 0, 0, 42))
+        self.setGraphicsEffect(shadow)
+        self.setToolTip("点击翻页；空格暂停 / 继续；左右方向键切换；Esc退出学习")
+
+    def set_hint(self, text: str) -> None:
+        self.hint.setText(text)
+        self.hint.setVisible(bool(text))
+
+    def set_type_size(self, size: int) -> None:
+        self.setStyleSheet(
+            "QWidget#glassPanel, QScrollArea, QScrollArea > QWidget > QWidget "
+            "{ background: transparent; border: none; }"
+            f"QLabel#cinematicText {{ background: transparent; color: #f5f4e6; font-size: {size}px; }}"
+            f"QLabel#cinematicHint {{ background: transparent; color: #f5f4e6; font-size: {max(12, size - 5)}px; }}")
+
+    def _gradient(self, rgb: tuple[int, int, int], edge: int, centre: int) -> QLinearGradient:
+        gradient = QLinearGradient(0, 0, max(1, self.width() - 1), 0)
+        for step in range(17):
+            position = step / 16
+            weight = math.sin(math.pi * position) ** 1.45
+            gradient.setColorAt(position, QColor(*rgb, round(edge + (centre - edge) * weight)))
+        return gradient
+
+    def refresh_backdrop(self, visual: SceneVisual) -> None:
+        # Capture only the renderer, never this overlay or other window controls.
+        # Cache per scene/resize/fade completion instead of recomputing each frame.
+        padding = 32
+        crop = self.geometry().adjusted(-padding, -padding, padding, padding).intersected(visual.rect())
+        frame = visual.grab().toImage().scaled(visual.size(), Qt.AspectRatioMode.IgnoreAspectRatio,
+                                              Qt.TransformationMode.SmoothTransformation)
+        source = QPixmap.fromImage(frame.copy(crop))
+        scene = QGraphicsScene()
+        item = QGraphicsPixmapItem(source)
+        blur = QGraphicsBlurEffect()
+        blur.setBlurRadius(22)
+        blur.setBlurHints(QGraphicsBlurEffect.BlurHint.QualityHint)
+        item.setGraphicsEffect(blur)
+        scene.addItem(item)
+        scene.setSceneRect(QRectF(source.rect()))
+        result = QImage(source.size(), QImage.Format.Format_ARGB32_Premultiplied)
+        result.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(result)
+        scene.render(painter, QRectF(result.rect()), scene.sceneRect())
+        painter.end()
+        # Fade the blur along with the tint so the edges blend into the scenery.
+        backdrop = QImage(self.size(), QImage.Format.Format_ARGB32_Premultiplied)
+        backdrop.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(backdrop)
+        painter.drawImage(crop.topLeft() - self.pos(), result)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+        painter.fillRect(backdrop.rect(), self._gradient((255, 255, 255), 60, 255))
+        painter.end()
+        self._backdrop = QPixmap.fromImage(backdrop)
+        self._backdrop_offset = QPoint()
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if not self._backdrop.isNull():
+            painter.drawPixmap(self._backdrop_offset, self._backdrop)
+        painter.fillRect(self.rect(), self._gradient((20, 36, 31), self.EDGE_ALPHA, self.CENTRE_ALPHA))
+        painter.setPen(QPen(self._gradient((247, 246, 229), 8, 51), 1))
+        painter.drawLine(QPointF(0, .5), QPointF(self.width(), .5))
+        painter.setPen(QPen(self._gradient((247, 246, 229), 4, 26), 1))
+        painter.drawLine(QPointF(0, self.height() - .5), QPointF(self.width(), self.height() - .5))
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            self._press_position = event.globalPosition().toPoint()
+        elif event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+            if self._press_position is not None:
+                distance = (event.globalPosition().toPoint() - self._press_position).manhattanLength()
+                self._press_position = None
+                if distance <= 6:
+                    self.activated.emit()
+                    return True
+        return super().eventFilter(watched, event)
+
+
+class LearningEntrance(QWidget):
+    """Route snapshot fades through a soft shade into the live learning background."""
+    progress_changed = Signal(float)
+    resume_requested = Signal()
+    DURATION_MS = 850
+
+    def __init__(self, snapshot: QPixmap, parent: QWidget):
+        super().__init__(parent)
+        self.snapshot = snapshot
+        self._progress = 0.0
+        self.paused = False
+        self.panel_snapshot = QPixmap()
+        self.panel_bounds = QRectF()
+
+    def set_panel(self, snapshot: QPixmap, bounds: QRectF) -> None:
+        self.panel_snapshot, self.panel_bounds = snapshot, bounds
+        self.update()
+
+    def get_progress(self) -> float:
+        return self._progress
+
+    def set_progress(self, value: float) -> None:
+        self._progress = value
+        self.progress_changed.emit(value)
+        self.update()
+
+    progress = Property(float, get_progress, set_progress)
+
+    def paintEvent(self, event):
+        elapsed = self._progress * self.DURATION_MS
+        reveal = max(0.0, min(1.0, (elapsed - 180) / 450))
+        reveal = QEasingCurve(QEasingCurve.Type.InOutCubic).valueForProgress(reveal)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.setOpacity(1 - reveal)
+        painter.drawPixmap(QRectF(self.rect()), self.snapshot, QRectF(self.snapshot.rect()))
+        painter.setOpacity(1)
+        shade = .3 * min(1.0, elapsed / 180) * (1 - reveal)
+        painter.fillRect(self.rect(), QColor(12, 22, 18, round(255 * shade)))
+        text_progress = max(0.0, min(1.0, (elapsed - 500) / 350))
+        text_progress = QEasingCurve(QEasingCurve.Type.OutCubic).valueForProgress(text_progress)
+        painter.setOpacity(text_progress)
+        if not self.panel_snapshot.isNull():
+            target = self.panel_bounds.translated(0, round(12 * (1 - text_progress)))
+            painter.drawPixmap(target, self.panel_snapshot, QRectF(self.panel_snapshot.rect()))
+        if self.paused:
+            painter.setOpacity(1)
+            painter.setPen(QColor("#fffdf2"))
+            painter.drawText(QRectF(0, self.height() - 44, self.width(), 30),
+                             Qt.AlignmentFlag.AlignCenter, "已暂停 · 点击画面或按空格继续")
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.resume_requested.emit()
+
+
 class LearningPlayer(QFrame):
     back_requested = Signal()
     quiz_requested = Signal()
@@ -141,83 +290,132 @@ class LearningPlayer(QFrame):
         self.visited: set[int] = set()
         self.disposed = False
         self.paused = False
+        self.summary_visible = False
         self.animation: QPropertyAnimation | None = None
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(30, 22, 30, 22)
-        layout.setSpacing(15)
-        heading = QHBoxLayout()
-        heading.addWidget(text_label("先学习，再出发", "hero"), 1)
-        self.counter = text_label("", "section")
-        heading.addWidget(self.counter)
-        heading.addWidget(control("返回路线", self.back_requested.emit, True))
-        layout.addLayout(heading)
-        layout.addWidget(text_label(node_name + "  ·  图文学习", "muted"))
-        self.pages = QStackedWidget()
-        layout.addWidget(self.pages, 1)
-        scene_page = QWidget()
-        scene_layout = QVBoxLayout(scene_page)
-        scene_layout.setContentsMargins(0, 0, 0, 0)
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setChildrenCollapsible(False)
-        self.visual_host = QStackedWidget()
-        self.visual_host.setMinimumWidth(370)
-        splitter.addWidget(self.visual_host)
-        reading = QScrollArea()
-        reading.setWidgetResizable(True)
-        reading.setMinimumWidth(330)
-        self.reading_content = QWidget()
-        reading_layout = QVBoxLayout(self.reading_content)
-        reading_layout.setContentsMargins(25, 15, 15, 20)
-        reading_layout.setSpacing(20)
-        self.scene_title = text_label("", "title")
-        self.scene_text = text_label("", "lessonText")
-        reading_layout.addWidget(text_label("本幕学习", "eyebrow"))
-        reading_layout.addWidget(self.scene_title)
-        reading_layout.addWidget(self.scene_text)
-        reading_layout.addStretch()
-        reading_layout.addWidget(text_label("可以暂停阅读，也可以手动切换分镜。", "muted"))
-        reading.setWidget(self.reading_content)
-        self.reading_scroll = reading
-        splitter.addWidget(reading)
-        splitter.setSizes([650, 430])
-        scene_layout.addWidget(splitter, 1)
-        self.pages.addWidget(scene_page)
-        summary_scroll = QScrollArea()
-        summary_scroll.setWidgetResizable(True)
-        summary = QWidget()
-        summary_layout = QVBoxLayout(summary)
-        summary_layout.setContentsMargins(45, 35, 45, 35)
-        summary_layout.setSpacing(22)
-        summary_layout.addWidget(text_label("本段学习小结", "eyebrow"))
-        summary_layout.addWidget(text_label("带着收获，开始检验", "hero"))
-        summary_layout.addWidget(text_label(lesson.summary, "lessonText"))
-        summary_layout.addWidget(text_label("知识检验可以帮助你发现还需要回顾的内容。", "muted"))
-        summary_layout.addStretch()
-        summary_layout.addWidget(control("重新观看本段", self.replay, True))
-        self.quiz_button = control("已学习，开始答题", self.request_quiz)
-        summary_layout.addWidget(self.quiz_button)
-        summary_scroll.setWidget(summary)
-        self.pages.addWidget(summary_scroll)
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 1000)
-        self.progress.setTextVisible(False)
-        layout.addWidget(self.progress)
-        controls = QHBoxLayout()
-        self.previous_button = control("上一幕", self.previous_scene, True)
-        self.pause_button = control("暂停", self.toggle_pause, True)
-        self.next_button = control("下一幕", self.next_scene)
-        self.auto = QCheckBox("自动翻页")
-        self.auto.setChecked(True)
-        self.playback_status = text_label("可随时暂停或手动翻页", "muted")
-        controls.addWidget(self.previous_button)
-        controls.addWidget(self.pause_button)
-        controls.addWidget(self.auto)
-        controls.addWidget(self.playback_status, 1)
-        controls.addWidget(self.next_button)
-        layout.addLayout(controls)
+        self.entering = False
+        self.entrance_animation: QPropertyAnimation | None = None
+        self.entrance: LearningEntrance | None = None
+        self._entrance_offset = 0
+        self._entrance_text_opacity = 1.0
+        self.visual_host = QStackedWidget(self)
+        self.glass = GlassTextPanel(self)
+        self.scene_text = self.glass.text
+        self.reading_scroll = self.glass.scroll
+        self.glass.activated.connect(self.activate_text)
+        self.exit_button = QPushButton("退出  ×", self)
+        self.exit_button.setObjectName("lessonExit")
+        self.exit_button.setAccessibleName("退出学习，返回路线")
+        self.exit_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.exit_button.clicked.connect(self.back_requested.emit)
+        self._blur_timer = QTimer(self)
+        self._blur_timer.setSingleShot(True)
+        self._blur_timer.timeout.connect(self._refresh_glass)
+        self._shortcuts = []
+        for key, callback in [("Escape", self.back_requested.emit), ("Space", self.toggle_pause),
+                              ("Right", self.next_scene), ("Left", self.previous_scene),
+                              ("Return", self.activate_text), ("Enter", self.activate_text),
+                              ("R", self.replay)]:
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.setAutoRepeat(False)
+            shortcut.activated.connect(callback)
+            self._shortcuts.append(shortcut)
 
-    def start(self) -> None:
-        self._show_scene(0)
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._layout_overlays()
+
+    def _layout_overlays(self) -> None:
+        self.visual_host.setGeometry(self.rect())
+        if self.entrance is not None:
+            self.entrance.setGeometry(self.rect())
+        width = self.width()
+        # Keep the original reading measure and height while extending only the glass.
+        reading_width = round(width * .69)
+        text_margin = (width - reading_width) // 2 + 28
+        self.glass.layout().setContentsMargins(text_margin, 20, text_margin, 20)
+        font_size = max(17, min(31, round(self.width() / 62)))
+        self.glass.set_type_size(font_size)
+        text_height = self.scene_text.heightForWidth(max(1, reading_width - 56))
+        hint_height = 28 if self.glass.hint.text() else 0
+        height = min(round(self.height() * .30), max(128, text_height + 48 + hint_height))
+        bottom = max(24, round(self.height() * .065))
+        self.glass.setGeometry((self.width() - width) // 2,
+                               self.height() - bottom - height,
+                               width, height)
+        margin = max(22, round(self.width() * .022))
+        self.exit_button.setGeometry(self.width() - margin - 96, margin, 96, 40)
+        self.glass.raise_()
+        self.exit_button.raise_()
+        if not self.disposed:
+            self._blur_timer.start(40)
+
+    def _refresh_glass(self) -> None:
+        if not self.disposed and hasattr(self, "visual") and self.visual.width() > 0:
+            self.glass.refresh_backdrop(self.visual)
+            if self.entering and self.entrance is not None:
+                self.entrance.set_panel(self.glass.grab(), QRectF(self.glass.geometry()))
+
+    def start(self, entrance_snapshot: QPixmap | None = None) -> None:
+        if self.disposed:
+            return
+        self.entering = entrance_snapshot is not None
+        self._show_scene(0, defer_clock=self.entering)
+        if self.entering:
+            self.visual.entrance_prepared = True
+            self._backdrop_ready = True
+            self._entrance_text_opacity = 0.0
+            self._entrance_offset = 12
+            self.entrance = LearningEntrance(entrance_snapshot, self)
+            self.entrance.progress_changed.connect(self._entrance_frame)
+            self.entrance.resume_requested.connect(self._resume_entrance)
+            self.entrance.show()
+            self._layout_overlays()
+            self._refresh_glass()
+            self.glass.hide()
+            self.entrance_animation = QPropertyAnimation(self.entrance, b"progress", self)
+            self.entrance_animation.setDuration(LearningEntrance.DURATION_MS)
+            self.entrance_animation.setStartValue(0.0)
+            self.entrance_animation.setEndValue(1.0)
+            self.entrance_animation.finished.connect(self._finish_entrance)
+            self.entrance_animation.start()
+            if self.paused:
+                self.entrance_animation.pause()
+        self.setFocus()
+
+    def _entrance_frame(self, value: float) -> None:
+        if self.disposed:
+            return
+        progress = max(0.0, min(1.0, (value * LearningEntrance.DURATION_MS - 500) / 350))
+        progress = QEasingCurve(QEasingCurve.Type.OutCubic).valueForProgress(progress)
+        self._entrance_offset = round(12 * (1 - progress))
+        self._entrance_text_opacity = progress
+
+    def _resume_entrance(self) -> None:
+        if self.entering and self.paused:
+            self.toggle_pause()
+
+    def _finish_entrance(self) -> None:
+        if self.disposed or not self.entering:
+            return
+        self.entering = False
+        self._entrance_offset = 0
+        self._entrance_text_opacity = 1.0
+        self.glass.show()
+        if self.entrance is not None:
+            self.entrance.hide()
+            self.entrance.deleteLater()
+            self.entrance = None
+        if self.entrance_animation is not None:
+            self.entrance_animation.deleteLater()
+            self.entrance_animation = None
+        self._layout_overlays()
+        self._refresh_glass()
+        # The scene's full configured reading time begins only after text is visible.
+        if self.animation is not None:
+            self.animation.start()
+            if self.paused:
+                self.animation.pause()
 
     def _stop_animation(self) -> None:
         if self.animation is not None:
@@ -225,16 +423,16 @@ class LearningPlayer(QFrame):
             self.animation.deleteLater()
             self.animation = None
 
-    def _show_scene(self, index: int) -> None:
+    def _show_scene(self, index: int, defer_clock: bool = False) -> None:
         if self.disposed:
             return
         self._stop_animation()
         self.index = index
         self.visited.add(index)
-        self.pages.setCurrentIndex(0)
+        self.summary_visible = False
         scene = self.lesson.scenes[index]
-        self.scene_title.setText(scene.title)
         self.scene_text.setText(scene.text)
+        self.glass.setAccessibleName(scene.title + "；" + scene.text)
         self.reading_scroll.verticalScrollBar().setValue(0)
         old = self.visual_host.currentWidget()
         if old is not None:
@@ -243,34 +441,44 @@ class LearningPlayer(QFrame):
         self.visual = self.renderers.build(scene, self.content_dir, self.node_name)
         self.visual_host.addWidget(self.visual)
         self.visual_host.setCurrentWidget(self.visual)
-        self.counter.setText(f"第 {index + 1} 幕 / 共 {len(self.lesson.scenes)} 幕")
-        self.previous_button.setEnabled(index > 0)
-        self.pause_button.setEnabled(True)
-        self.next_button.setEnabled(True)
-        self.next_button.setText("查看学习小结" if index == len(self.lesson.scenes) - 1 else "下一幕")
+        self._backdrop_ready = scene.transition == "none"
         self.animation = QPropertyAnimation(self.visual, b"phase", self)
         self.animation.setDuration(scene.duration_ms)
         self.animation.setStartValue(0.0)
         self.animation.setEndValue(1.0)
         self.animation.valueChanged.connect(self._frame_changed)
         self.animation.finished.connect(self._scene_finished)
-        self.animation.start()
-        if self.paused:
-            self.animation.pause()
+        if not defer_clock:
+            self.animation.start()
+            if self.paused:
+                self.animation.pause()
         self._update_pause_text()
-        self._frame_changed(0.0)
+        self._layout_overlays()
 
     def _frame_changed(self, value) -> None:
-        self.progress.setValue(round(1000 * (self.index + float(value)) / len(self.lesson.scenes)))
+        if not self._backdrop_ready and float(value) * self.lesson.scenes[self.index].duration_ms >= 600:
+            self._backdrop_ready = True
+            self._blur_timer.start(0)
 
     def _scene_finished(self) -> None:
-        if not self.disposed and self.auto.isChecked() and not self.paused:
+        if not self.disposed and not self.paused:
             self.next_scene()
-        elif not self.disposed:
-            self.playback_status.setText("本幕播放结束，可点击下一幕")
+
+    def activate_text(self) -> None:
+        if self.disposed:
+            return
+        if self.entering:
+            self._resume_entrance()
+            return
+        if self.summary_visible:
+            self.request_quiz()
+        elif self.paused:
+            self.toggle_pause()
+        else:
+            self.next_scene()
 
     def next_scene(self) -> None:
-        if self.disposed or self.pages.currentIndex() != 0:
+        if self.disposed or self.entering or self.summary_visible:
             return
         if self.index + 1 < len(self.lesson.scenes):
             self._show_scene(self.index + 1)
@@ -278,8 +486,8 @@ class LearningPlayer(QFrame):
             self._show_summary()
 
     def previous_scene(self) -> None:
-        if not self.disposed:
-            if self.pages.currentIndex() == 1:
+        if not self.disposed and not self.entering:
+            if self.summary_visible:
                 self._show_scene(self.index)
             elif self.index > 0:
                 self._show_scene(self.index - 1)
@@ -288,46 +496,83 @@ class LearningPlayer(QFrame):
         if len(self.visited) != len(self.lesson.scenes):
             return
         self._stop_animation()
-        self.pages.setCurrentIndex(1)
-        self.counter.setText("学习小结")
-        self.progress.setValue(1000)
-        self.previous_button.setEnabled(True)
-        self.pause_button.setEnabled(False)
-        self.next_button.setEnabled(False)
-        self.playback_status.setText("可以重看，或确认学习后开始答题")
+        # A quick manual skip must not leave the last picture half faded forever.
+        self.visual.set_phase(1.0)
+        self.summary_visible = True
+        self.scene_text.setText(self.lesson.summary)
+        self.glass.setAccessibleName("学习小结；" + self.lesson.summary)
+        self.reading_scroll.verticalScrollBar().setValue(0)
+        self.glass.set_hint("学习完毕 · 点击此处开始答题")
+        self._layout_overlays()
 
     def request_quiz(self) -> None:
-        if not self.disposed and self.pages.currentIndex() == 1 and len(self.visited) == len(self.lesson.scenes):
+        if not self.disposed and self.summary_visible and len(self.visited) == len(self.lesson.scenes):
             self.quiz_requested.emit()
 
     def replay(self) -> None:
+        if self.disposed or self.entering:
+            return
         self.visited.clear()
         self.paused = False
         self._show_scene(0)
 
     def _update_pause_text(self) -> None:
-        self.pause_button.setText("继续播放" if self.paused else "暂停")
-        self.playback_status.setText("已暂停 · 可以手动翻页" if self.paused else "可随时暂停或手动翻页")
+        if not self.summary_visible:
+            self.glass.set_hint("已暂停 · 点击文字框或按空格继续" if self.paused else "")
+            self._layout_overlays()
 
     def pause(self) -> None:
-        if self.disposed or self.pages.currentIndex() != 0:
+        if self.disposed or self.summary_visible:
             return
         self.paused = True
+        if self.entering:
+            if self.entrance_animation is not None:
+                self.entrance_animation.pause()
+            if self.entrance is not None:
+                self.entrance.paused = True
+                self.entrance.update()
+            return
         if self.animation is not None and self.animation.state() == QPropertyAnimation.State.Running:
             self.animation.pause()
+        if self.animation is not None and self.lesson.scenes[self.index].transition == "fade":
+            # Keep the learning picture readable when focus is lost during its fade.
+            if self.animation.currentTime() < 600:
+                self.animation.setCurrentTime(600)
         self._update_pause_text()
 
     def toggle_pause(self) -> None:
+        if self.disposed or self.summary_visible:
+            return
         if not self.paused:
             self.pause()
             return
         self.paused = False
-        if self.animation is not None and self.animation.state() == QPropertyAnimation.State.Paused:
-            self.animation.resume()
+        if self.entering:
+            if self.entrance_animation is not None:
+                self.entrance_animation.resume()
+            if self.entrance is not None:
+                self.entrance.paused = False
+                self.entrance.update()
+            return
+        if self.animation is not None:
+            if self.animation.state() == QPropertyAnimation.State.Paused:
+                self.animation.resume()
+            elif self.animation.currentTime() >= self.animation.duration():
+                self.next_scene()
         self._update_pause_text()
 
     def stop(self) -> None:
         self.disposed = True
+        self.entering = False
+        if self.entrance_animation is not None:
+            self.entrance_animation.stop()
+            self.entrance_animation.deleteLater()
+            self.entrance_animation = None
+        if self.entrance is not None:
+            self.entrance.hide()
+            self.entrance.deleteLater()
+            self.entrance = None
+        self._blur_timer.stop()
         self._stop_animation()
 
     def hideEvent(self, event):

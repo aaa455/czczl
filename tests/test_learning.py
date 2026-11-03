@@ -19,7 +19,10 @@ class LearningTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.path = Path(self.tmp.name) / "progress.json"
         self.store = JsonProgressStore(self.path)
-        self.pack = JsonContentRepository(CONTENT).load()
+        pack = JsonContentRepository(CONTENT).load()
+        # Keep the original rule tests independent of the evolving production bank.
+        self.pack = replace(pack, quiz_size=None,
+                            nodes=tuple(replace(n, questions=n.questions[:2]) for n in pack.nodes))
         self.service = LearningService(self.pack, self.store)
         self.service.complete_lesson(self.pack.nodes[0].id)
 
@@ -101,7 +104,8 @@ class LearningTests(unittest.TestCase):
         node = self.pack.nodes[0]
         prose = replace(self.pack, nodes=(replace(node, event="New prose"), *self.pack.nodes[1:]))
         self.assertEqual(content_signature(prose), content_signature(self.pack))
-        question = replace(node.questions[0], answer=("b",))
+        wrong = next(o.id for o in node.questions[0].options if o.id not in node.questions[0].answer)
+        question = replace(node.questions[0], answer=(wrong,))
         changed = replace(self.pack, nodes=(replace(node, questions=(question, *node.questions[1:])),
                                            *self.pack.nodes[1:]))
         updated = LearningService(changed, self.store)
@@ -159,6 +163,11 @@ class ContentTests(unittest.TestCase):
 
     def test_invalid_position(self):
         self.check_invalid(lambda raw: raw["nodes"][0].update(position=[True, 0.5]))
+
+    def test_invalid_quiz_size(self):
+        for value in [True, 0, -1, "10", 2.5]:
+            with self.subTest(value=value):
+                self.check_invalid(lambda raw: raw.update(quiz_size=value))
 
     def test_missing_source(self):
         self.check_invalid(lambda raw: raw["nodes"][0].update(sources=[]))

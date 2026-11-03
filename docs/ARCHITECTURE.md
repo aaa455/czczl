@@ -10,6 +10,7 @@
 | 替换内容来源 | `ContentRepository.load() -> ContentPack` | 在入口注入实现；当前默认读取JSON，可用 `--content-dir` 更换完整包 |
 | 新增题型判定 | `QuestionRegistry.register(kind, evaluator)` | evaluator接受 `Question` 与选中选项ID元组，返回bool |
 | 新增题型界面 | `QuestionViewRegistry.register(kind, factory)` | factory返回 `AnswerWidget`，实现 `selected() -> tuple[str, ...]` |
+| 调整每章抽题数量 | `ContentPack.quiz_size`、`LearningService.start_quiz/questions_for` | JSON内配置quiz_size，抽题和选项顺序保存在Progress.quiz_sessions，缺省保留全题模式 |
 | 增加右侧页面 | `MainWindow.register_panel(name, factory)` | factory返回QWidget，之后 `show_panel(name)`；名称不能重复 |
 | 更换存储 | `ProgressStore.load(pack_id, signature)`、`save(progress)` | 注入SQLite等实现，UI不应直接读写存档 |
 | 更换徽章输出 | `BadgeExporter.export(path, name, summary)` | 注入新导出器，例如后续SVG；当前PNG使用Qt绘图 |
@@ -27,10 +28,11 @@
 
 ## 学习规则
 
-- 节点按数组顺序解锁，全部题目掌握后下一站开放。
+- 节点按数组顺序解锁，本轮抽中题目全部掌握后下一站开放。内置172道候选题，每章无重复抽10题，选项随机排列；首次抽题先写盘，退出和重启沿用本轮。复习不重抽，重新出发清空后重抽。
 - 新学习者先经过分镜与小结确认，`complete_lesson(node_id)` 保存学习签名后可以答题；`submit` 同样检查学习门槛。已完成的旧节点允许直接复习，不损失原成绩。
 - 错误可重试，首次结果保留；复习不重复累加正确数。
 - 指标是学习进度、首次答对和已掌握题数，不把知识题成绩作为精神品质评定。
+- 题目呈现、提交校验、完成判定与统计统一读取questions_for，避免UI显示抽题、后端仍要求做完整题库。内置统计分母为80，未抽中的候选题不能提交。Random对象可注入用于确定性测试，默认使用SystemRandom。
 - 完成情况从题目状态推导；没有写死8站、每站2题或160分。
 - 存档先原子写入成功，再更新内存状态；异常时保留原进度。
 - 题目、答案、选项或顺序变化改变签名，旧档备份后重开；故事、解析、来源、配色调整不改变签名。
@@ -40,11 +42,15 @@
 
 `MainWindow` 用QStackedWidget在路线工作区与LearningPlayer之间切换。播放器不直接保存数据或判断答案；通过 `back_requested`、`quiz_requested` 信号交给窗口和学习服务处理。
 
-播放器用一个QPropertyAnimation控制当前分镜的phase与进度，phase为0—1。默认图文渲染器用它控制淡入、图片轻微缩放或占位山形缓慢移动，阅读文字保持静止。暂停冻结同一动画时钟，手动翻页可继续；关掉自动翻页后，动画结束停在当前幕。
+进入学习前捕获路线画面，在窗口边框切换后交给LearningEntrance叠层，保持窗口位置和客户区尺寸。入场使用独立、可暂停的850毫秒动画：0—180毫秒路线压暗，180—630毫秒背景交叠，500—850毫秒文字框淡入并上移12像素。文字框入场以快照绘制，完成后交还真实GlassTextPanel，避免Qt嵌套透明度与阴影效果引起显示丢失。真实分镜动画时钟在入场完成后才启动，不消耗阅读时长。过渡期间拦截翻页、重看和重复进入；退出/Esc仍可用。失焦暂停入场，点击过渡画面或空格恢复；stop同时清理两种动画和叠层。
+
+播放器用一个QPropertyAnimation控制当前分镜的phase，phase为0—1。默认图文渲染器用它控制淡入，图片按窗口大小拉伸；不再缩放图片或移动占位山形。暂停冻结同一动画时钟，点击文字框翻页，空格暂停 / 继续，左右方向键切换。分镜按时长自动播放，最后停在小结。
+
+播放期间MainWindow隐藏标题栏、顶部导航和状态栏，退出或进入题目后恢复窗口。画面渲染器铺满播放器，GlassTextPanel在下方横贯窗口，以烟绿色蒙层与模糊采样形成两侧浅、中间深的玻璃渐变，并保留柔和投影；文字阅读区仍居中、沿用此前宽度，唯一可见按钮为退出。小结沿用同一背景和文字框，点击文字框或回车确认后发出quiz_requested。长文字使用透明滚动区域，原title与image_alt继续保留在配置与辅助说明中。图片、文字与SceneRendererRegistry接口均未改变。
 
 切出主窗口或隐藏播放器时暂停；切换页面、返回路线或关闭窗口时stop并销毁播放器，停止动画与翻页回调。最后一幕只进入小结，不自动开始答题。用户可以手动依次翻页，不强制等待固定时长；这记录学习流程，不证明实际理解。
 
-学习签名单独记录在Progress.learned_lessons，兼容缺少该字段的旧存档。学习配置更新只影响对应学习标记，不改变现有答题签名与题目成绩。`ProgressStore` 实现需完整保存新增可选字段。
+学习签名单独记录在Progress.learned_lessons，随机题目及选项顺序记录在Progress.quiz_sessions，兼容缺少这些字段的旧存档。学习配置更新只影响对应学习标记，不改变现有答题签名与题目成绩；quiz_size进入答题签名，变更时按题库更新规则备份旧档重开。`ProgressStore` 实现需完整保存新增可选字段。
 
 自定义分镜渲染器继承SceneVisual，在paintEvent中使用phase；在入口注册后通过 `MainWindow(..., scene_renderers=registry)` 注入。当前只提供 `image_text`，没有预先实现旁白、视频或交互题型。新增类型时需同步更新校验脚本注册检查。
 
