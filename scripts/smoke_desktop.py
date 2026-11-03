@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QAbstractAnimation, Qt
 from PySide6.QtGui import QFont, QFontDatabase, QImage
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
@@ -44,14 +44,33 @@ def main() -> int:
         window = MainWindow(service)
         window.show()
         app.processEvents()
+        stations = window.route_footer.station_buttons
+        assert [s.state for s in stations] == ['current'] + ['locked'] * (len(pack.nodes) - 1)
         assert window.grab().save(str(args.output / "01-route.png"))
-        window.select_node(pack.nodes[-1].id)
+        page = window.scroll.widget()
+        page.modern_toggle.click()
+        page.sources_toggle.click()
+        app.processEvents()
+        assert page.modern_text.isVisible() and page.sources_text.isVisible()
+        assert window.grab().save(str(args.output / "16-journal-details.png"))
+        page.modern_toggle.click()
+        page.sources_toggle.click()
+        window.resize(1060, 700)
+        app.processEvents()
+        action = page.primary_button
+        assert window.childAt(action.mapTo(window, action.rect().center())) is action
+        assert window.grab().save(str(args.output / "17-journal-small.png"))
+        window.resize(1240, 820)
+        app.processEvents()
+        QTest.mouseClick(stations[-1], Qt.MouseButton.LeftButton)
+        assert window.viewed_id == pack.nodes[-1].id
         assert not service.unlocked(pack.nodes[-1].id)
         for index, node in enumerate(pack.nodes):
-            window.select_node(node.id)
-            window.start_quiz()
+            QTest.mouseClick(stations[index], Qt.MouseButton.LeftButton)
+            assert window.viewed_id == node.id
+            window.scroll.widget().primary_button.click()
             player = window.player
-            assert player is not None  # New learners are directed into the lesson first.
+            assert player is not None  # The journal action starts learning before the quiz.
             if player.paused:
                 player.toggle_pause()
             # Screenshot encoding can outlast the 850ms entrance on CI runners.
@@ -123,6 +142,29 @@ def main() -> int:
                     assert window.grab().save(str(args.output / "02-quiz.png"))
                 window.next_button.click()
             assert service.completed(node.id)
+            assert f'{index + 1} / {len(pack.nodes)}' in window.meter.accessibleDescription()
+            assert all(s.state == 'completed' for s in stations[:index + 1])
+            if index + 1 < len(stations):
+                assert stations[index + 1].state == 'current'
+            # Capture the real saved-progress animation, including the winding Chishui edge.
+            travel = window.route.travel_animation
+            if index < len(pack.nodes) - 1:
+                if travel.state() == QAbstractAnimation.State.Running:
+                    travel.pause()
+                if index in (0, 4):
+                    frames = args.output / f"route-frames-{index + 1}"
+                    frames.mkdir(exist_ok=True)
+                    for elapsed in range(0, travel.duration(), 80):
+                        travel.setCurrentTime(elapsed)
+                        app.processEvents()
+                        assert window.grab().save(str(frames / f"{elapsed:04}.png"))
+                travel.resume()
+                travel.setCurrentTime(travel.duration())
+                assert window.route.arrived_index == index + 1
+            assert abs(window.route.travel - min(index + 1, len(pack.nodes) - 1)) < .001
+            window.route.arrival_animation.stop()
+            app.processEvents()
+            assert window.grab().save(str(args.output / f"route-completed-{index + 1}.png"))
         window.show_panel("summary")
         app.processEvents()
         assert window.grab().save(str(args.output / "03-summary.png"))
@@ -147,7 +189,10 @@ def main() -> int:
                   "bank_questions": sum(len(n.questions) for n in pack.nodes),
                   "checks": ["locked-node view", "lesson gate and explicit quiz handoff for all nodes",
                              "entrance transition and deferred reading clock", "lesson pause, manual navigation and summary", "wrong-answer retry", "all nodes through UI",
-                             "persistent progress and random question/option order", "badge PNG", "review at minimum size"]}
+                             "persistent progress and random question/option order", "badge PNG", "review at minimum size",
+                             "landscape background and curved route animation for all chapter completions",
+                             "journey bar navigation and saved mastery states for all chapters",
+                             "journal primary actions, expandable prose, minimum-size entry and saved progress dial"]}
         (args.output / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(json.dumps(report))
     return 0

@@ -1,15 +1,40 @@
 QWidget { color: #30271f; font-family: "Microsoft YaHei UI"; font-size: 14px; }
 QMainWindow, QWidget#root { background: #f3eddf; }
-QFrame#header { background: #faf6ec; border-bottom: 1px solid #ded3bf; }
+QFrame#header { background: rgba(250, 241, 221, 200); border-bottom: 1px solid rgba(158, 121, 74, 65); }
 QLabel#seal { background: #922d2b; color: #fff5df; border-radius: 5px; font-family: "SimSun"; font-size: 27px; }
 QLabel#brand { font-family: "SimSun"; font-size: 27px; font-weight: bold; color: #652c28; }
 QLabel#subtitle, QLabel#muted { color: #786b5d; font-size: 12px; }
 QLabel#eyebrow { color: #987744; font-size: 12px; }
-QLabel#hero { font-family: "SimSun"; font-size: 30px; font-weight: bold; }
+QLabel#hero { font-family: "SimSun"; font-size: 28px; font-weight: bold; color: #593c2b; }
 QLabel#title { font-family: "SimSun"; font-size: 25px; font-weight: bold; color: #742e29; }
 QLabel#section { color: #8e3530; font-weight: bold; margin-top: 10px; }
 QLabel#body { line-height: 1.7; }
-QFrame#panel { background: #fcf9f1; border: 1px solid #ded4c0; border-radius: 9px; }
+QFrame#journalTools { background: transparent; border: 1px solid #d5c19e; border-radius: 21px; }
+QFrame#journalTools QToolButton { background: transparent; color: #68523b; font-size: 12px; border: 1px solid transparent; border-radius: 12px; padding: 2px; }
+QFrame#journalTools QToolButton:hover { background: rgba(211, 188, 151, 45); color: #903c31; }
+QFrame#journalTools QToolButton:focus { border-color: #b1905c; }
+QFrame#journalToolDivider { background: #d9c8aa; border: none; }
+QLabel#journalProgressCount { font-size: 11px; color: #68523b; }
+QLabel#journalProgressCorrect { font-size: 10px; color: #93816b; }
+QFrame#chapterRibbon { background: #903c31; border: none; }
+QLabel#chapterNumber { font-family: "SimSun"; font-size: 24px; color: #fff4db; }
+QLabel#chapterTag { font-size: 10px; color: #edd8b6; }
+QLabel#journalChapterTitle { font-family: "SimSun"; font-size: 24px; color: #513e2e; }
+QLabel#journalDate { font-size: 12px; color: #856c50; }
+QLabel#journalPlace { font-size: 11px; color: #93816b; }
+QFrame#journalRule { background: #dec9a8; border: none; }
+QLabel#journalSection { font-size: 12px; font-weight: bold; color: #903c31; }
+QLabel#journalEvent { font-size: 14px; color: #513e2e; }
+QLabel#journalSmallSection { font-size: 11px; color: #a07a4b; }
+QLabel#journalSpirit { font-size: 12px; color: #513e2e; }
+QLabel#journalDetail { font-size: 12px; color: #856c50; padding-top: 12px; }
+QToolButton#journalLink { background: transparent; color: #8b7154; font-size: 11px; border: 1px solid transparent; border-radius: 2px; padding: 3px 0; }
+QToolButton#journalLink:hover, QToolButton#journalLink:checked { color: #903c31; }
+QToolButton#journalLink:focus { border-color: #b1905c; }
+QPushButton#journalPrimary { background: #903c31; color: #fff4db; font-size: 14px; font-weight: bold; border: 1px solid #903c31; border-radius: 2px; padding: 3px 10px; }
+QPushButton#journalPrimary:hover { background: #a84a3b; }
+QPushButton#journalPrimary:pressed { background: #742d25; }
+QPushButton#journalPrimary:focus { border: 2px solid #b1905c; }
 QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; border: none; }
 QPushButton { background: #922d2b; color: #fff9ed; border: 1px solid #922d2b; border-radius: 5px; padding: 10px 15px; }
 QPushButton:hover { background: #ab3b34; }

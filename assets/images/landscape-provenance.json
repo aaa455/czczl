@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "asset": "long-march-landscape.png",
+  "created_on": "2026-11-03",
+  "model": "gpt-image-2",
+  "source_kind": "ai_generated_landscape_from_user_reference",
+  "reference_sha256": "2df1fca1ce634c5c63cc6bfa8ebdd2292dfa20145153c657893398cf0f058eb1",
+  "image_sha256": "ff338274bc79d493d6dd0442e3221afbf55d9cc17a3b8db0c48c77c8d8c5b20b",
+  "dimensions": [
+    2048,
+    1152
+  ],
+  "prompt": "请以这张参考图为基础制作一张16:9横向的桌面应用整体背景，不做章节封面，不做界面模型。\n保留参考图的整体布局、暖米金色与赭石色调、细腻中国山水绘画质感、左上雪山、左侧及下方层叠山岭、薄雾、河谷、左下角小比例行军队伍，以及右侧中上部大面积柔和留白。不要改变为摄影或3D，不要引入强光、复杂装饰和海报文字。\n本次输出是干净背景底图：请完整去除参考图中所有红色路线、红色圆形节点、右下角山头的红旗及其旗杆，去除这些元素后自然补全下面的山体、雾气和河谷，不留擦除痕迹。左下角队伍所持的小红旗可以保留为画面点缀。\n背景上不绘制路线、节点或地名；路线将由后续绘图层精确叠加。不要标题、文字、数字、标记、按钮、卡片、边框、水印、logo或UI。严格保持宽幅全景，画面完整铺满，无外框。输出2048×1152。\n",
+  "use": "main_window_background_only",
+  "route_layer": "../styles/route-map.json",
+  "note": "Historical theme illustration. Route is a separate chapter learning diagram, not an accurate geographic map."
+}
