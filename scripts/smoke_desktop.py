@@ -54,20 +54,26 @@ def main() -> int:
             assert player is not None  # New learners are directed into the lesson first.
             if player.paused:
                 player.toggle_pause()
+            # Screenshot encoding can outlast the 850ms entrance on CI runners.
+            # Freeze its clock while seeking frames, then resume to finish normally.
+            entrance = player.entrance_animation
+            assert entrance is not None
+            entrance.pause()
             if index == 0:
                 frames = args.output / "entrance-frames"
                 frames.mkdir(exist_ok=True)
                 for elapsed in range(0, 850, 50):
-                    player.entrance_animation.setCurrentTime(elapsed)
+                    entrance.setCurrentTime(elapsed)
                     app.processEvents()
                     assert window.grab().save(str(frames / f"{elapsed:04}.png"))
                 for elapsed, name in [(0, "11-entry-route"), (180, "12-entry-dim"),
                                       (450, "13-entry-background"), (650, "14-entry-text")]:
-                    player.entrance_animation.setCurrentTime(elapsed)
+                    entrance.setCurrentTime(elapsed)
                     app.processEvents()
                     assert player.animation.currentTime() == 0
                     assert window.grab().save(str(args.output / f"{name}.png"))
-            player.entrance_animation.setCurrentTime(850)
+            entrance.resume()
+            entrance.setCurrentTime(850)
             app.processEvents()
             assert not player.entering
             if index == 0:
