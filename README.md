@@ -67,6 +67,8 @@ Word导入格式为`chapters`，每章包含`chapterId`、`title`、`questions`�
 
 该检查会在同一台电脑的隔离目录运行exe，移除PATH中的Python；仍不等同于在另一台无Python电脑验收。
 
+v0.3.0-preview的构建提交、文件校验值与核验结果见[交付记录](docs/release-v0.3.0-preview.md)。
+
 ## 检查
 
 ```powershell
