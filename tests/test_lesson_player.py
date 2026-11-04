@@ -158,7 +158,8 @@ class PlayerTests(unittest.TestCase):
             APP.processEvents()
             self.assertEqual(player.visual.size(), player.size())
             rendered = player.visual.grab().toImage()
-            points = [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)]
+            points = [(0, 0), (rendered.width() - 1, 0),
+                      (0, rendered.height() - 1), (rendered.width() - 1, rendered.height() - 1)]
             for (x, y), color in zip(points, colors):
                 self.assertEqual(rendered.pixelColor(x, y), color)
             visible_buttons = [b for b in player.findChildren(QPushButton) if b.isVisible()]
@@ -181,6 +182,63 @@ class PlayerTests(unittest.TestCase):
         QTest.mousePress(player.scene_text, Qt.MouseButton.LeftButton, pos=QPoint(20, 20))
         QTest.mouseRelease(player.scene_text, Qt.MouseButton.LeftButton, pos=QPoint(70, 20))
         self.assertEqual(player.index, 0)
+
+    def test_glass_backdrop_tracks_scene_and_bounds_without_a_delayed_old_frame(self):
+        scenes = []
+        for index, color in enumerate(("red", "blue")):
+            image = QImage(600, 400, QImage.Format.Format_RGB32)
+            image.fill(QColor(color))
+            image.save(str(self.directory / f"{color}.png"))
+            scenes.append(replace(self.lesson.scenes[index], image=f"{color}.png"))
+        player = self.create(replace(self.lesson, scenes=tuple(scenes)))
+        player.animation.pause()
+        player.animation.setCurrentTime(1000)
+        player._refresh_glass()
+        player.next_scene()
+        # The next frame must already use the new scene, even before timers fire.
+        backdrop = player.glass._backdrop.toImage()
+        pixel = backdrop.pixelColor(backdrop.width() // 2, backdrop.height() // 2)
+        self.assertGreater(pixel.blue(), pixel.red() + 100)
+        self.assertEqual(backdrop.size(), player.glass.size())
+        player.pause()
+        player.resize(1240, 820)
+        self.assertEqual(player.glass._backdrop.size(), player.glass.size())
+
+    def test_glass_crop_uses_logical_coordinates_at_windows_display_scale(self):
+        image = QImage(600, 400, QImage.Format.Format_RGB32)
+        image.fill(QColor("red"))
+        for y in range(200, 400):
+            for x in range(600):
+                image.setPixelColor(x, y, QColor("blue"))
+        image.save(str(self.directory / "bands.png"))
+        scene = replace(self.lesson.scenes[0], image="bands.png", transition="none")
+        player = self.create(replace(self.lesson, scenes=(scene,)))
+        player._refresh_glass()
+        backdrop = player.glass._backdrop.toImage()
+        for fraction in (.25, .5, .75):
+            pixel = backdrop.pixelColor(round(backdrop.width() * fraction), backdrop.height() // 2)
+            self.assertGreater(pixel.alpha(), 100)
+            self.assertGreater(pixel.blue(), pixel.red() + 100)
+
+    def test_scene_fade_has_no_glass_brightness_jump_at_600ms(self):
+        image = QImage(600, 400, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        image.save(str(self.directory / "white.png"))
+        scene = replace(self.lesson.scenes[0], image="white.png")
+        player = self.create(replace(self.lesson, scenes=(scene,)))
+        player.animation.pause()
+        player.animation.setCurrentTime(40)
+        player._refresh_glass()
+        def sample(elapsed):
+            player.animation.setCurrentTime(elapsed)
+            APP.processEvents()
+            QTest.qWait(1)
+            image = player.grab().toImage()
+            scale = image.devicePixelRatio()
+            return image.pixelColor(round(player.width() / 2 * scale),
+                                    round((player.glass.y() + 8) * scale))
+        before, after = sample(599), sample(601)
+        self.assertLessEqual(max(abs(a - b) for a, b in zip(before.getRgb(), after.getRgb())), 3)
 
     def test_entrance_defers_reading_blocks_skips_and_reveals_text(self):
         player = self.create(entrance=True)
