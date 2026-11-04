@@ -24,6 +24,12 @@ def _icon(kind: str) -> QIcon:
         painter.drawEllipse(QRectF(2, 2, 14, 14))
         painter.drawPoint(9, 6)
         painter.drawLine(9, 8, 9, 13)
+    elif kind == 'music':
+        painter.drawLine(8, 4, 15, 2)
+        painter.drawLine(8, 4, 8, 13)
+        painter.drawLine(15, 2, 15, 11)
+        painter.drawEllipse(QRectF(4, 12, 4, 3))
+        painter.drawEllipse(QRectF(11, 10, 4, 3))
     else:
         painter.drawArc(QRectF(2, 2, 14, 14), 40 * 16, 290 * 16)
         path = QPainterPath(QPointF(13, 1))
@@ -35,16 +41,18 @@ def _icon(kind: str) -> QIcon:
 
 
 class JournalTools(QFrame):
-    def __init__(self):
+    def __init__(self, has_music: bool = False):
         super().__init__()
         self.setObjectName('journalTools')
         self.setAccessibleName('学习工具')
-        self.setFixedSize(383, 42)
+        self.setFixedSize(480 if has_music else 383, 42)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(13, 0, 13, 0)
         layout.setSpacing(8)
         buttons = []
-        for i, (text, kind) in enumerate([('学习回顾', 'book'), ('使用与来源', 'info'), ('重新出发', 'reset')]):
+        entries = [('音乐：开', 'music')] if has_music else []
+        entries += [('学习回顾', 'book'), ('使用与来源', 'info'), ('重新出发', 'reset')]
+        for i, (text, kind) in enumerate(entries):
             if i:
                 divider = QFrame()
                 divider.setObjectName('journalToolDivider')
@@ -61,6 +69,7 @@ class JournalTools(QFrame):
             button.setMinimumHeight(34)
             layout.addWidget(button, 1)
             buttons.append(button)
+        self.music_button = buttons.pop(0) if has_music else None
         self.summary_button, self.about_button, self.reset_button = buttons
 
 

@@ -48,6 +48,7 @@ def main() -> int:
     normal = json.loads(screenshot.with_suffix(".json").read_text(encoding="utf-8"))
     assert normal["frozen"] and normal["nodes"] == expected_nodes
     assert normal["questions"] == expected_questions
+    assert not normal["music_error"] and normal["music_status"] in {"LoadedMedia", "BufferedMedia"}
     lesson_image = output / "04-learning-preview.png"
     assert run(["--preview-lesson", "--smoke-check", str(lesson_image), "--data-dir",
                 str(output / "学习模板存档")], "lesson.log") == 0

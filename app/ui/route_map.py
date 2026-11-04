@@ -35,7 +35,8 @@ class RouteMap(QWidget):
         self._scaled_background = QPixmap()
         self._paint_map = True
         self._completed = self._completed_count()
-        self._travel = float(min(self._completed, max(0, len(service.pack.nodes) - 1)))
+        self._reached = service.progress.route_reached_index
+        self._travel = float(self._reached)
         self._pulse = 1.0
         self.travel_animation = QPropertyAnimation(self, b'travel', self)
         self.travel_animation.setDuration(self.TRAVEL_MS)
@@ -80,16 +81,21 @@ class RouteMap(QWidget):
 
     def sync_progress(self) -> None:
         completed = self._completed_count()
-        if completed == self._completed:
+        final_completion = completed > self._completed and completed == len(self.service.pack.nodes)
+        self._completed = completed
+        reached = self.service.progress.route_reached_index
+        if reached == self._reached:
+            if final_completion and reached == len(self.service.pack.nodes) - 1:
+                self._arrive()
             self.update()
             return
-        previous = self._completed
-        self._completed = completed
-        target = float(min(completed, max(0, len(self.service.pack.nodes) - 1)))
+        previous = self._reached
+        self._reached = reached
+        target = float(reached)
         self.travel_animation.stop()
         self.arrival_animation.stop()
         self._pulse = 1.0
-        if completed < previous or not self._paint_map:
+        if reached < previous or not self._paint_map:
             self.travel = target
         elif self._travel < target:
             self.travel_animation.setStartValue(self._travel)
@@ -103,7 +109,7 @@ class RouteMap(QWidget):
         self.travel_animation.stop()
         self.arrival_animation.stop()
         self._pulse = 1.0
-        self.travel = float(min(self._completed, max(0, len(self.service.pack.nodes) - 1)))
+        self.travel = float(self._reached)
 
     def set_map_visible(self, visible: bool) -> None:
         if not visible:

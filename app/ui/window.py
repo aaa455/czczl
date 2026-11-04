@@ -2,19 +2,20 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, Qt, QTimer
-from PySide6.QtWidgets import (QFileDialog, QFrame, QHBoxLayout,
-    QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
+from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, Qt, QTimer, QUrl
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtWidgets import (QFrame, QGraphicsOpacityEffect, QHBoxLayout,
+    QLabel, QMainWindow, QMessageBox, QPushButton,
     QScrollArea, QStackedWidget, QVBoxLayout, QWidget)
 
 from app.learning import LearningService
-from app.ui.badge import BadgeExporter, PngBadgeExporter
 from app.ui.questions import QuestionViewRegistry, default_views
 from app.ui.route_map import RouteMap
 from app.ui.journey_bar import JourneyBar
 from app.ui.journal_header import JournalProgress, JournalTools
 from app.ui.journal_page import ChapterPage, PaperPanel
 from app.ui.lesson_player import LearningPlayer, SceneRendererRegistry, default_scene_renderers
+from app.ui.memorial import MemorialWindow
 
 
 def label(text: str, role: str = "body") -> QLabel:
@@ -37,16 +38,32 @@ def button(text: str, callback: Callable, secondary: bool = False) -> QPushButto
 class MainWindow(QMainWindow):
     def __init__(self, service: LearningService,
                  question_views: QuestionViewRegistry | None = None,
-                 badge_exporter: BadgeExporter | None = None,
                  content_dir: Path | None = None,
-                 scene_renderers: SceneRendererRegistry | None = None):
+                 scene_renderers: SceneRendererRegistry | None = None,
+                 music_path: Path | None = None):
         super().__init__()
         self.service = service
         self.question_views = question_views or default_views()
-        self.badge_exporter = badge_exporter or PngBadgeExporter()
         self.content_dir = content_dir or Path(__file__).resolve().parents[2] / "assets/content"
+        self.assets_dir = Path(__file__).resolve().parents[2] / "assets"
         self.scene_renderers = scene_renderers or default_scene_renderers()
         self.player: LearningPlayer | None = None
+        self.memorial_window: MemorialWindow | None = None
+        self._route_opacity: QGraphicsOpacityEffect | None = None
+        self._route_transition: QPropertyAnimation | None = None
+        self.music_player = None
+        self.music_output = None
+        self.music_enabled = music_path is not None
+        if music_path is not None:
+            if not music_path.is_file():
+                raise OSError(f"背景音乐文件不存在：{music_path}")
+            self.music_output = QAudioOutput(self)
+            self.music_output.setVolume(0.25)
+            self.music_player = QMediaPlayer(self)
+            self.music_player.setAudioOutput(self.music_output)
+            self.music_player.setSource(QUrl.fromLocalFile(str(music_path)))
+            self.music_player.setLoops(QMediaPlayer.Loops.Infinite)
+            self.music_player.errorOccurred.connect(self._music_failed)
         for node in service.pack.nodes:
             for scene in service.lessons[node.id].scenes:
                 if not self.scene_renderers.supports(scene.kind):
@@ -85,7 +102,9 @@ class MainWindow(QMainWindow):
         self.meter = JournalProgress()
         header_layout.addWidget(self.meter)
         header_layout.addSpacing(15)
-        self.tools = JournalTools()
+        self.tools = JournalTools(has_music=self.music_player is not None)
+        if self.tools.music_button is not None:
+            self.tools.music_button.clicked.connect(self.toggle_music)
         self.tools.summary_button.clicked.connect(lambda: self.show_panel("summary"))
         self.tools.about_button.clicked.connect(lambda: self.show_panel("about"))
         self.tools.reset_button.clicked.connect(self.confirm_reset)
@@ -137,6 +156,34 @@ class MainWindow(QMainWindow):
         self.refresh()
         self.show_panel("detail")
         QTimer.singleShot(0, self._layout_route_overlay)
+        if self.music_player is not None:
+            self.music_player.play()
+
+    def toggle_music(self) -> None:
+        if self.music_player is None:
+            return
+        self.music_enabled = not self.music_enabled
+        if self.music_enabled:
+            self.music_player.play()
+        else:
+            self.music_player.pause()
+        self.tools.music_button.setText("音乐：开" if self.music_enabled else "音乐：关")
+        self.tools.music_button.setAccessibleName("关闭背景音乐" if self.music_enabled else "播放背景音乐")
+        if self.player is not None:
+            self.player.set_music_enabled(self.music_enabled)
+
+    def _music_failed(self, error, description: str) -> None:
+        if error == QMediaPlayer.Error.NoError:
+            return
+        self.music_enabled = False
+        if self.tools.music_button is not None:
+            self.tools.music_button.setText("音乐不可用")
+            self.tools.music_button.setToolTip(description)
+            self.tools.music_button.setEnabled(False)
+        if self.player is not None and self.player.music_button is not None:
+            self.player.music_button.setText("音乐不可用")
+            self.player.music_button.setToolTip(description)
+            self.player.music_button.setEnabled(False)
 
     def _layout_route_overlay(self) -> None:
         self.route.layout().activate()
@@ -199,22 +246,27 @@ class MainWindow(QMainWindow):
     def detail_panel(self) -> QWidget:
         node = self.service.node(self.viewed_id)
         index = self.service.pack.nodes.index(node)
-        quiz_note = ""
-        if self.service.pack.quiz_size is not None:
-            quiz_note = (f"本章题库 {len(node.questions)} 题，每轮随机抽取 {self.service.quiz_count(node.id)} 题，选项随机排列。"
-                         "本轮题目与顺序自动保存，退出后可继续；复习沿用本轮，重新出发后重抽。")
         page = ChapterPage(node, index, len(self.service.pack.nodes),
                            learned=self.service.lesson_learned(node.id),
                            completed=self.service.completed(node.id),
-                           can_quiz=self.service.can_quiz(node.id), quiz_note=quiz_note)
+                           can_quiz=self.service.can_quiz(node.id))
         page.learn_requested.connect(self.start_learning)
         page.quiz_requested.connect(self.start_quiz)
         if index < len(self.service.pack.nodes) - 1:
             next_id = self.service.pack.nodes[index + 1].id
-            page.advance_requested.connect(lambda: self.select_node(next_id))
+            page.advance_requested.connect(lambda: self.advance_to_next(node.id, next_id))
         else:
-            page.advance_requested.connect(lambda: self.show_panel("summary"))
+            page.advance_requested.connect(self.show_memorial)
         return page
+
+    def advance_to_next(self, node_id: str, next_id: str) -> None:
+        try:
+            self.service.depart(node_id)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "无法出发", str(exc))
+            return
+        self.route.sync_progress()
+        self.select_node(next_id)
 
     def locked_panel(self) -> QWidget:
         widget, layout = self.new_panel("尚未解锁", "这一站，还在前方")
@@ -249,10 +301,12 @@ class MainWindow(QMainWindow):
         self._set_learning_mode(True)
         node = self.service.node(self.viewed_id)
         player = LearningPlayer(self.service.lessons[node.id], node.name,
-                                self.content_dir, self.scene_renderers)
+                                self.content_dir, self.scene_renderers,
+                                music_enabled=self.music_enabled if self.music_player is not None else None)
         self.player = player
         player.back_requested.connect(lambda: self.show_panel("detail"))
         player.quiz_requested.connect(self._finish_learning)
+        player.music_toggle_requested.connect(self.toggle_music)
         self.content_stack.addWidget(player)
         self.content_stack.setCurrentWidget(player)
         player.start(entrance_snapshot=route_snapshot)
@@ -307,6 +361,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self._leave_learning(restore_window=False)
         self.route.stop_animations()
+        if self.music_player is not None:
+            self.music_player.stop()
         super().closeEvent(event)
 
     def quiz_panel(self) -> QWidget:
@@ -362,38 +418,82 @@ class MainWindow(QMainWindow):
     def summary_panel(self) -> QWidget:
         summary = self.service.summary()
         finished = summary.completed_nodes == summary.total_nodes
-        widget, layout = self.new_panel("学习回顾", "每一步，都留下收获",
-                                        "完成全部节点后，可以保存专属学习纪念徽章。")
-        for title, value in [("已完成节点", f"{summary.completed_nodes} / {summary.total_nodes}"),
-                              ("首次答对", f"{summary.first_correct} / {summary.total_questions}"),
-                              ("已掌握题目", f"{summary.mastered_questions} / {summary.total_questions}")]:
-            layout.addWidget(label(title, "section"))
-            layout.addWidget(label(value, "title"))
-        layout.addWidget(label("首次结果保留最初作答情况；通过重试掌握题目后可以继续学习。", "muted"))
-        self.badge_name = QLineEdit()
-        self.badge_name.setPlaceholderText("你的名字（最多12字，可不填写）")
-        self.badge_name.setMaxLength(12)
-        self.badge_name.setAccessibleName("纪念徽章上的名字")
-        layout.addWidget(self.badge_name)
-        export_button = button("保存学习纪念徽章 PNG", self.export_badge)
-        export_button.setEnabled(finished)
-        layout.addWidget(export_button)
+        widget, layout = self.new_panel("学习回顾",
+                                        "向长征英烈献花" if finished else "每一步，都留下收获",
+                                        "完成全部节点，献上一束花，致敬长征途中牺牲的英烈。"
+                                        if finished else "完成全部节点后，将开放献花纪念。")
+        if finished:
+            layout.addWidget(label(f"{summary.completed_nodes} / {summary.total_nodes} 个节点已完成", "muted"))
+            layout.addWidget(button("进入献花纪念", self.show_memorial))
+        else:
+            for title, value in [("已完成节点", f"{summary.completed_nodes} / {summary.total_nodes}"),
+                                  ("首次答对", f"{summary.first_correct} / {summary.total_questions}"),
+                                  ("已掌握题目", f"{summary.mastered_questions} / {summary.total_questions}")]:
+                layout.addWidget(label(title, "section"))
+                layout.addWidget(label(value, "title"))
+            layout.addWidget(label("首次结果保留最初作答情况；通过重试掌握题目后可以继续学习。", "muted"))
         layout.addWidget(button("回到学习路线", lambda: self.select_node(self.service.current_node().id), True))
         layout.addStretch()
         return widget
 
-    def export_badge(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(self, "保存学习纪念徽章", "足迹长征-学习徽章.png", "PNG图片 (*.png)")
-        if not path:
+    def show_memorial(self) -> None:
+        summary = self.service.summary()
+        if summary.completed_nodes != summary.total_nodes:
             return
-        try:
-            target = Path(path)
-            if target.suffix.lower() != ".png":
-                target = target.with_suffix(".png")
-            self.badge_exporter.export(target, self.badge_name.text(), self.service.summary())
-            QMessageBox.information(self, "保存成功", f"徽章已保存到：\n{target}")
-        except (OSError, ValueError) as exc:
-            QMessageBox.warning(self, "无法保存", str(exc))
+        if self.memorial_window is not None and self.memorial_window.isVisible():
+            self.memorial_window.raise_()
+            return
+        import json
+        martyrs = json.loads((self.assets_dir / "content" / "martyrs.json").read_text(encoding="utf-8"))
+        self.memorial_window = MemorialWindow(
+            martyrs, self.assets_dir / "images" / "memorial", self)
+        self.memorial_window.finished.connect(self._memorial_finished)
+        self.route.stop_animations()
+        central = self.centralWidget()
+        self._route_opacity = QGraphicsOpacityEffect(central)
+        central.setGraphicsEffect(self._route_opacity)
+        self._route_opacity.setOpacity(1.0)
+        self._route_transition = QPropertyAnimation(self._route_opacity, b"opacity", self)
+        self._route_transition.setDuration(260)
+        self._route_transition.setStartValue(1.0)
+        self._route_transition.setEndValue(0.0)
+        self._route_transition.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self._route_transition.finished.connect(self._open_memorial_window)
+        self._route_transition.start()
+
+    def _open_memorial_window(self) -> None:
+        if self.memorial_window is None:
+            return
+        self.memorial_window.show()
+        self.memorial_window.raise_()
+        self.memorial_window.activateWindow()
+        self._route_transition = QPropertyAnimation(
+            self.memorial_window, b"windowOpacity", self)
+        self._route_transition.setDuration(500)
+        self._route_transition.setStartValue(0.0)
+        self._route_transition.setEndValue(1.0)
+        self._route_transition.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._route_transition.start()
+
+    def _memorial_finished(self, result: int) -> None:
+        if self.memorial_window is not None:
+            self.memorial_window.deleteLater()
+            self.memorial_window = None
+        if self._route_opacity is None:
+            return
+        self._route_transition = QPropertyAnimation(self._route_opacity, b"opacity", self)
+        self._route_transition.setDuration(300)
+        self._route_transition.setStartValue(0.0)
+        self._route_transition.setEndValue(1.0)
+        self._route_transition.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._route_transition.finished.connect(self._restore_route_opacity)
+        self._route_transition.start()
+
+    def _restore_route_opacity(self) -> None:
+        central = self.centralWidget()
+        if central is not None:
+            central.setGraphicsEffect(None)
+        self._route_opacity = None
 
     def confirm_reset(self) -> None:
         if QMessageBox.question(self, "重新出发", "清空本内容包的学习进度，重新开始？",
@@ -418,7 +518,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(label("点击路线节点，选择开始本段学习。过场自动播放，点击文字框或按右方向键翻页，左方向键回看，空格暂停或继续；切出窗口会暂停，点击文字框继续。小结出现后点击文字框或按回车确认答题，R键重看整段，右上角退出或Esc返回路线。长文字可在框内滚动阅读。学过的节点可重看或直接答题，进度自动保存在本机。"))
         layout.addWidget(label("内容状态", "section"))
         layout.addWidget(label("预览内容，史实、措辞和资料出处待团队核验。" if self.service.pack.review_status == "draft"
-                               else "具体资料出处见各节点，内容由参赛团队维护。"))
+                               else "历史内容与参考资料由参赛团队维护。"))
         layout.addWidget(label("开发与素材", "section"))
         layout.addWidget(label("主界面使用AI辅助创作的山水背景；交互路线、节点和通关描线动画由Qt独立绘制。图像为美术复原，学习路线不代表精确地理路径。使用Python、PySide6 Essentials及PyInstaller；第三方许可说明随交付提供。内容核验和最终验收由团队完成。"))
         layout.addWidget(button("继续学习", lambda: self.select_node(self.service.current_node().id)))

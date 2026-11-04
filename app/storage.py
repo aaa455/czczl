@@ -66,7 +66,10 @@ class JsonProgressStore:
                             or len(set(order)) != len(order)):
                         raise ValueError("随机选项记录无效")
                 sessions[node_id] = QuizSession(tuple(ids), {qid: tuple(order) for qid, order in orders.items()})
-            return Progress(pack_id, signature, answers, learned, sessions)
+            reached = raw.get("route_reached_index")
+            if reached is not None and (type(reached) is not int or reached < 0):
+                raise ValueError("路线进度无效")
+            return Progress(pack_id, signature, answers, learned, sessions, reached)
         except (ValueError, UnicodeError, TypeError):
             self._archive("存档格式异常")
             return fresh

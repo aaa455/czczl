@@ -13,12 +13,12 @@
 | 调整每章抽题数量 | `ContentPack.quiz_size`、`LearningService.start_quiz/questions_for` | JSON内配置quiz_size，抽题和选项顺序保存在Progress.quiz_sessions，缺省保留全题模式 |
 | 增加右侧页面 | `MainWindow.register_panel(name, factory)` | factory返回QWidget，之后 `show_panel(name)`；名称不能重复 |
 | 更换存储 | `ProgressStore.load(pack_id, signature)`、`save(progress)` | 注入SQLite等实现，UI不应直接读写存档 |
-| 更换徽章输出 | `BadgeExporter.export(path, name, summary)` | 注入新导出器，例如后续SVG；当前PNG使用Qt绘图 |
+| 通关纪念页面 | `app/ui/memorial.py`、`assets/content/martyrs.json` | 全部节点完成后开放献花；随机展示一位人物及对应性别的本地AI纪念立绘 |
 | 调整整体视觉 | `assets/styles/theme.qss` | C修改样式；路线图在 `RouteMap` 中独立绘制 |
 | 更换主界面背景与曲线路线 | `assets/images/long-march-landscape.png`、`assets/styles/route-map.json` | 背景、归一化节点位置、标签偏移和每段贝塞尔控制点分开维护；不改题库签名 |
 | 调整底部章节行程栏 | `app/ui/journey_bar.py`、`JourneyBar.node_clicked`、`refresh(service)` | 章节名及数量来自内容包；点击信号交给窗口导航，状态从已保存的学习进度推导 |
 | 调整顶部进度及功能工具栏 | `app/ui/journal_header.py`、`JournalProgress.refresh(summary)`、`JournalTools` | 环形进度及辅助说明从LearningSummary刷新，工具按钮交给窗口处理页面切换和重置 |
-| 调整右侧章节手记 | `app/ui/journal_page.py`、`PaperPanel`、`ChapterPage` | 共享纸页外壳；章节图签、可展开正文及固定底部操作，学习/答题/前进信号交给窗口处理 |
+| 调整右侧章节手记 | `app/ui/journal_page.py`、`PaperPanel`、`ChapterPage` | 共享纸页外壳；章节图签、可滚动正文及固定底部操作，学习/答题/前进信号交给窗口处理 |
 | 填充学习过场 | `JsonLessonRepository.load(pack)`、`assets/content/lessons.json` | 图文、时长、小结均为数据，缺少配置时生成三幕占位 |
 | 新增分镜表现 | `SceneRendererRegistry.register(kind, factory)` | factory接受LearningScene、内容目录、节点名称，返回SceneVisual |
 
@@ -48,7 +48,7 @@
 
 JourneyBar独立绘制纸色渐变背景和连接线，StationButton继承QAbstractButton绘制圆点、勾选及章节名，保留Tab聚焦、空格/回车激活与辅助说明。refresh读取service，已完成优先于当前站；回看旧章节不改变下一待完成站，全部通关后不再显示当前站。标准8章行程栏高124像素；较多章节可横向滚动，键盘焦点自动进入可见区。它不另存进度，不控制地图的描线动画。
 
-顶部JournalProgress绘制已完成站数的环形进度，并展示首次答对计数；JournalTools使用Qt原生绘制的小图标，提供学习回顾、使用与来源、重新出发。右侧PaperPanel用Qt绘制叠层纸页，所有页面共用同一外壳。ChapterPage接收Node与当前学习状态，发出learn_requested、quiz_requested、advance_requested，不直接写存档。历史记事、精神内核、新程对照及来源在内部阅读区域滚动，底部学习/继续按钮固定；已学习后保留重看入口，通关后保留复习入口。长文字经过HTML转义后用于带行距的正文排版，来源与其他内容按纯文本显示。详见[手记界面说明](JOURNAL_UI.md)。
+顶部JournalProgress绘制已完成站数的环形进度，并展示首次答对计数；JournalTools使用Qt原生绘制的小图标，提供学习回顾、使用与来源、重新出发。右侧PaperPanel用Qt绘制叠层纸页，所有页面共用同一外壳。ChapterPage接收Node与当前学习状态，发出learn_requested、quiz_requested、advance_requested，不直接写存档。历史记事与精神内核在内部阅读区域滚动，底部学习/继续按钮固定；已学习后保留重看入口，通关后保留复习入口。长文字经过HTML转义后用于带行距的正文排版。详见[手记界面说明](JOURNAL_UI.md)。
 
 RouteMap.sync_progress从已保存的连续通关节点推导目标；新通关时用独立QPropertyAnimation在1600毫秒内推进travel，按曲线弧长逐步描红，移动光点与路径共用采样点。到站或完成最终章时播放850毫秒光圈。刷新或复习不重新开始；存档启动直接恢复完成路段；重置、学习播放器切换与窗口关闭停止动画。进度不另存第二份动画状态。
 

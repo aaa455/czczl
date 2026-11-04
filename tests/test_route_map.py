@@ -48,7 +48,7 @@ class RouteMapTests(unittest.TestCase):
         for question in self.service.start_quiz(node.id):
             self.service.submit(node.id, question.id, question.answer)
 
-    def test_last_correct_answer_starts_route_once_and_refresh_does_not_rewind(self):
+    def test_last_correct_answer_waits_for_departure_before_route_animation(self):
         window = self.window()
         node = self.pack.nodes[0]
         self.service.complete_lesson(node.id)
@@ -62,7 +62,13 @@ class RouteMapTests(unittest.TestCase):
         self.assertTrue(hasattr(window.route, 'travel_animation'), 'Route completion animation is missing')
         window.submit_answer()
         animation = window.route.travel_animation
+        self.assertEqual(animation.state(), QAbstractAnimation.State.Stopped)
+        self.assertEqual(window.route.travel, 0)
+        window.next_question()
+        self.assertEqual(window.scroll.widget().primary_button.text(), '出发下一段  →')
+        window.scroll.widget().primary_button.click()
         self.assertEqual(animation.state(), QAbstractAnimation.State.Running)
+        self.assertEqual(window.viewed_id, self.pack.nodes[1].id)
         self.assertEqual(window.route.arrived_index, 0)
         animation.pause()
         animation.setCurrentTime(animation.duration() // 2)
@@ -76,6 +82,8 @@ class RouteMapTests(unittest.TestCase):
         animation.setCurrentTime(animation.duration())
         self.assertAlmostEqual(window.route.travel, 1)
         self.assertEqual(window.route.arrived_index, 1)
+        restored = LearningService(self.pack, JsonProgressStore(self.store.path))
+        self.assertEqual(restored.progress.route_reached_index, 1)
         window.select_node(node.id)
         self.assertEqual(animation.state(), QAbstractAnimation.State.Stopped)
 
@@ -84,13 +92,17 @@ class RouteMapTests(unittest.TestCase):
         restored = LearningService(self.pack, JsonProgressStore(self.store.path))
         window = self.window(restored)
         self.assertTrue(hasattr(window.route, 'travel_animation'), 'Saved route restoration is missing')
-        self.assertAlmostEqual(window.route.travel, 1)
+        self.assertAlmostEqual(window.route.travel, 0)
         self.assertEqual(window.route.travel_animation.state(), QAbstractAnimation.State.Stopped)
-        self.service.complete_lesson(self.pack.nodes[1].id)
-        for question in self.service.start_quiz(self.pack.nodes[1].id):
-            self.service.submit(self.pack.nodes[1].id, question.id, question.answer)
-        window.service = self.service
-        window.route.service = self.service
+        restored.depart(self.pack.nodes[0].id)
+        window.refresh()
+        window.route.travel_animation.setCurrentTime(window.route.travel_animation.duration())
+        self.assertAlmostEqual(window.route.travel, 1)
+        self.service = restored
+        self.complete(1)
+        window.refresh()
+        self.assertEqual(window.route.travel_animation.state(), QAbstractAnimation.State.Stopped)
+        self.service.depart(self.pack.nodes[1].id)
         window.refresh()
         self.assertEqual(window.route.travel_animation.state(), QAbstractAnimation.State.Running)
         with patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.Yes):
@@ -118,6 +130,7 @@ class RouteMapTests(unittest.TestCase):
         window = self.window()
         self.assertTrue(hasattr(window.route, 'travel_animation'), 'Curved route animation is missing')
         self.complete(0)
+        self.service.depart(self.pack.nodes[0].id)
         window.refresh()
         animation = window.route.travel_animation
         animation.pause()
@@ -134,6 +147,7 @@ class RouteMapTests(unittest.TestCase):
     def test_final_chapter_pulses_final_node_without_extra_segment(self):
         for index in range(7):
             self.complete(index)
+            self.service.depart(self.pack.nodes[index].id)
         window = self.window()
         self.assertTrue(hasattr(window.route, 'arrival_animation'), 'Arrival pulse is missing')
         self.complete(7)
@@ -171,6 +185,7 @@ class RouteMapTests(unittest.TestCase):
     def test_resize_and_entering_lesson_preserve_route_progress(self):
         window = self.window()
         self.complete(0)
+        self.service.depart(self.pack.nodes[0].id)
         window.refresh()
         animation = window.route.travel_animation
         animation.pause()
