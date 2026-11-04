@@ -63,6 +63,13 @@ class LearningService:
         self.signature = content_signature(pack)
         self.progress = store.load(pack.id, self.signature)
         self._validate_sessions()
+        if self.progress.route_reached_index is None:
+            # Existing saves already showed all completed route segments.
+            self.progress.route_reached_index = min(
+                sum(self.completed(node.id) for node in self.pack.nodes), len(self.pack.nodes) - 1)
+        if self.progress.route_reached_index > min(
+                sum(self.completed(node.id) for node in self.pack.nodes), len(self.pack.nodes) - 1):
+            raise ValueError("路线进度与答题记录不匹配")
 
     def _validate_sessions(self) -> None:
         nodes = {n.id: n for n in self.pack.nodes}
@@ -131,6 +138,20 @@ class LearningService:
     def current_node(self) -> Node:
         return next((n for n in self.pack.nodes if not self.completed(n.id)),
                     self.pack.nodes[-1])
+
+    def depart(self, node_id: str) -> bool:
+        index = next((i for i, node in enumerate(self.pack.nodes) if node.id == node_id), None)
+        if index is None or index >= len(self.pack.nodes) - 1:
+            return False
+        if not self.completed(node_id):
+            raise ValueError("请先完成本段题目")
+        if self.progress.route_reached_index >= index + 1:
+            return False
+        updated = deepcopy(self.progress)
+        updated.route_reached_index = index + 1
+        self.store.save(updated)
+        self.progress = updated
+        return True
 
     def lesson_learned(self, node_id: str) -> bool:
         return self.progress.learned_lessons.get(node_id) == lesson_signature(self.lessons[node_id])

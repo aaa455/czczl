@@ -11,14 +11,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from PySide6.QtCore import QAbstractAnimation, Qt
-from PySide6.QtGui import QFont, QFontDatabase, QImage
+from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from app.content import JsonContentRepository
 from app.learning import LearningService
 from app.lessons import JsonLessonRepository
 from app.storage import JsonProgressStore
-from app.ui.badge import PngBadgeExporter
 from app.ui.window import MainWindow
 
 
@@ -48,13 +47,6 @@ def main() -> int:
         assert [s.state for s in stations] == ['current'] + ['locked'] * (len(pack.nodes) - 1)
         assert window.grab().save(str(args.output / "01-route.png"))
         page = window.scroll.widget()
-        page.modern_toggle.click()
-        page.sources_toggle.click()
-        app.processEvents()
-        assert page.modern_text.isVisible() and page.sources_text.isVisible()
-        assert window.grab().save(str(args.output / "16-journal-details.png"))
-        page.modern_toggle.click()
-        page.sources_toggle.click()
         window.resize(1060, 700)
         app.processEvents()
         action = page.primary_button
@@ -146,9 +138,14 @@ def main() -> int:
             assert all(s.state == 'completed' for s in stations[:index + 1])
             if index + 1 < len(stations):
                 assert stations[index + 1].state == 'current'
-            # Capture the real saved-progress animation, including the winding Chishui edge.
+            # Completing the quiz unlocks the next station but waits for explicit departure.
             travel = window.route.travel_animation
             if index < len(pack.nodes) - 1:
+                assert travel.state() == QAbstractAnimation.State.Stopped
+                window.scroll.widget().primary_button.click()
+                assert window.viewed_id == pack.nodes[index + 1].id
+                assert travel.state() == QAbstractAnimation.State.Running
+                # Capture the real saved-progress animation, including the winding Chishui edge.
                 if travel.state() == QAbstractAnimation.State.Running:
                     travel.pause()
                 if index in (0, 4):
@@ -175,9 +172,16 @@ def main() -> int:
         assert restored.summary() == summary
         for node in pack.nodes:
             assert restored.questions_for(node.id) == service.questions_for(node.id)
-        badge = args.output / "04-badge.png"
-        PngBadgeExporter().export(badge, "长征学习者", summary)
-        assert QImage(str(badge)).width() == 900
+        window.show_memorial()
+        QTest.qWait(800)
+        assert window.memorial_window is not None and window.memorial_window.isVisible()
+        window.memorial_window.flower_button.click()
+        QTest.qWait(950)
+        assert window.memorial_window.name_label.text()
+        assert not window.memorial_window.portrait.pixmap().isNull()
+        assert window.memorial_window.grab().save(str(args.output / "04-memorial.png"))
+        window.memorial_window.accept()
+        QTest.qWait(350)
         # Minimum window size and completed-node review remain usable.
         window.resize(1060, 700)
         window.select_node(pack.nodes[0].id)
@@ -189,10 +193,10 @@ def main() -> int:
                   "bank_questions": sum(len(n.questions) for n in pack.nodes),
                   "checks": ["locked-node view", "lesson gate and explicit quiz handoff for all nodes",
                              "entrance transition and deferred reading clock", "lesson pause, manual navigation and summary", "wrong-answer retry", "all nodes through UI",
-                             "persistent progress and random question/option order", "badge PNG", "review at minimum size",
+                             "persistent progress and random question/option order", "full-window memorial transition and portrait", "review at minimum size",
                              "landscape background and curved route animation for all chapter completions",
                              "journey bar navigation and saved mastery states for all chapters",
-                             "journal primary actions, expandable prose, minimum-size entry and saved progress dial"]}
+                             "journal primary actions, minimum-size entry and saved progress dial"]}
         (args.output / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(json.dumps(report))
     return 0

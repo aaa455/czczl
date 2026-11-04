@@ -84,6 +84,7 @@ class Progress:
     answers: dict[str, Attempt] = field(default_factory=dict)
     learned_lessons: dict[str, str] = field(default_factory=dict)
     quiz_sessions: dict[str, QuizSession] = field(default_factory=dict)
+    route_reached_index: int | None = 0
 
 
 @dataclass(frozen=True)

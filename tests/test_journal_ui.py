@@ -1,5 +1,6 @@
 """Journal presentation must preserve real navigation and learning entry points."""
 from dataclasses import replace
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -10,7 +11,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QToolButton
 
 from app.content import JsonContentRepository
 from app.learning import LearningService
@@ -89,26 +90,13 @@ class JournalUiTests(unittest.TestCase):
         self.assertIn('0 / 8', window.meter.accessibleDescription())
         self.assertIn('0 / 80', window.meter.accessibleDescription())
 
-    def test_details_expand_current_chapter_content_with_keyboard_access(self):
+    def test_chapter_page_omits_unused_comparison_and_sources_entries(self):
         window = self.window()
         page = window.scroll.widget()
-        self.assertTrue(hasattr(page, 'modern_toggle'), 'Expandable journal content is missing')
-        self.assertFalse(page.modern_text.isVisible())
-        self.assertFalse(page.sources_text.isVisible())
-        QTest.mouseClick(page.modern_toggle, Qt.MouseButton.LeftButton)
-        self.assertTrue(page.modern_text.isVisible())
-        self.assertEqual(page.modern_text.text(), self.pack.nodes[0].modern)
-        page.sources_toggle.setFocus()
-        QTest.keyClick(page.sources_toggle, Qt.Key.Key_Space)
-        self.assertTrue(page.sources_text.isVisible())
-        self.assertIn(self.pack.nodes[0].sources[0], page.sources_text.text())
-        self.assertIn('10', page.quiz_note.text())
-        APP.processEvents()
-        source_center = page.sources_text.mapTo(page.body_scroll.viewport(), page.sources_text.rect().center())
-        self.assertTrue(page.body_scroll.viewport().rect().contains(source_center),
-                        'Expanded sources must be revealed in the reading viewport')
-        page.sources_toggle.click()
-        self.assertFalse(page.sources_text.isVisible())
+        actions = [item.text() for item in page.findChildren(QToolButton)]
+        self.assertFalse(any('新程对照' in text or '史料出处' in text for text in actions))
+        self.assertFalse(any(item.text() == self.pack.nodes[0].modern
+                             for item in page.findChildren(QLabel)))
 
     def test_primary_action_enters_learning_then_resumes_quiz_and_advances(self):
         window = self.window()
@@ -135,14 +123,13 @@ class JournalUiTests(unittest.TestCase):
 
     def test_long_content_scrolls_without_hiding_primary_action_at_minimum_size(self):
         long_node = replace(self.pack.nodes[0], name='扩展章节：很长的标题也应能够完整阅读',
-                            event='长篇章节正文。' * 150, modern='新程对照长内容。' * 100)
+                            event='长篇章节正文。' * 150)
         service = LearningService(replace(self.pack, nodes=(long_node,)), self.store)
         window = self.window(service)
         window.resize(1060, 700)
         APP.processEvents()
         page = window.scroll.widget()
         self.assertTrue(hasattr(page, 'body_scroll'), 'The journal needs a separate reading area')
-        page.modern_toggle.click()
         APP.processEvents()
         self.assertGreater(page.body_scroll.verticalScrollBar().maximum(), 0)
         page.body_scroll.verticalScrollBar().setValue(page.body_scroll.verticalScrollBar().maximum())
@@ -151,14 +138,36 @@ class JournalUiTests(unittest.TestCase):
         QTest.mouseClick(page.primary_button, Qt.MouseButton.LeftButton)
         self.assertIsNotNone(window.player)
 
-    def test_last_chapter_primary_opens_badge_review_for_external_single_chapter(self):
+    def test_memorial_unlocks_only_after_every_node_is_complete(self):
         self.pack = replace(self.pack, nodes=(self.pack.nodes[0],))
         self.service = LearningService(self.pack, self.store)
-        self.complete(0)
         window = self.window()
-        self.assertIn('1 / 1', window.meter.accessibleDescription())
+        window.tools.summary_button.click()
+        self.assertFalse(any(item.text() == '献上一束花'
+                             for item in window.scroll.widget().findChildren(QPushButton)))
+        self.assertIsNone(window.memorial_window)
+
+        self.complete(0)
+        window.select_node(self.pack.nodes[0].id)
         window.scroll.widget().primary_button.click()
-        self.assertTrue(window.badge_name.isVisible())
+        QTest.qWait(300)
+        self.assertIn('1 / 1', window.meter.accessibleDescription())
+        self.assertIsNotNone(window.memorial_window)
+        self.assertTrue(window.memorial_window.isWindow())
+        self.assertTrue(window.memorial_window.isVisible())
+        self.assertGreaterEqual(window.memorial_window.width(), window.width() - 2)
+        flower_button = window.memorial_window.flower_button
+        flower_button.click()
+        people = json.loads((ROOT / 'assets/content/martyrs.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(people), 10)
+        self.assertEqual(sum(person['gender'] == 'male' for person in people), 5)
+        self.assertEqual(sum(person['gender'] == 'female' for person in people), 5)
+        shown = next(person for person in people
+                     if person['name'] == window.memorial_window.name_label.text())
+        self.assertEqual(window.memorial_window.role_label.text(), shown['role'])
+        self.assertEqual(window.memorial_window.biography_label.text(), shown['biography'])
+        self.assertFalse(window.memorial_window.portrait.pixmap().isNull())
+        window.memorial_window.accept()
         self.assertEqual(self.service.summary().completed_nodes, 1)
 
 

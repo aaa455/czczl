@@ -1,7 +1,7 @@
 """Layered paper shell and chapter page, with reading separate from fixed actions."""
 from html import escape
 
-from PySide6.QtCore import QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea,
                                QSizePolicy, QToolButton, QVBoxLayout, QWidget)
@@ -61,7 +61,7 @@ class ChapterPage(QWidget):
         return self.minimumSizeHint().height()
 
     def __init__(self, node: Node, index: int, total: int, *,
-                 learned: bool, completed: bool, can_quiz: bool, quiz_note: str = ''):
+                 learned: bool, completed: bool, can_quiz: bool):
         super().__init__()
         self.setObjectName('chapterPage')
         self.setAccessibleName(f'第{index + 1}站，共{total}站：{node.name}')
@@ -127,32 +127,8 @@ class ChapterPage(QWidget):
         spirit_row.addWidget(_text('精神内核', 'journalSmallSection'), 0, Qt.AlignmentFlag.AlignTop)
         spirit_row.addWidget(_text(node.spirit, 'journalSpirit'), 1)
         body_layout.addLayout(spirit_row)
-        body_layout.addSpacing(12)
-
-        links = QHBoxLayout()
-        self.modern_toggle = self._toggle('新程对照')
-        self.sources_toggle = self._toggle('史料出处')
-        links.addWidget(self.modern_toggle)
-        links.addStretch()
-        links.addWidget(self.sources_toggle)
-        body_layout.addLayout(links)
-        self.modern_text = _text(node.modern, 'journalDetail')
-        self.sources_text = _text('\n'.join(node.sources), 'journalDetail')
-        self.quiz_note = _text(quiz_note, 'journalDetail')
-        for item in (self.modern_text, self.sources_text, self.quiz_note):
-            item.hide()
-            body_layout.addWidget(item)
-        self.modern_toggle.toggled.connect(self.modern_text.setVisible)
-        self.sources_toggle.toggled.connect(self.sources_text.setVisible)
-        self.sources_toggle.toggled.connect(lambda checked: self.quiz_note.setVisible(checked and bool(quiz_note)))
         body_layout.addStretch()
         self.body_scroll.setWidget(body)
-        self._expanded_target: QLabel | None = None
-        self._reveal_timer = QTimer(self)
-        self._reveal_timer.setSingleShot(True)
-        self._reveal_timer.timeout.connect(self._reveal_expansion)
-        self.modern_toggle.toggled.connect(lambda checked: self._queue_reveal(self.modern_text, checked))
-        self.sources_toggle.toggled.connect(lambda checked: self._queue_reveal(self.sources_text, checked))
         layout.addWidget(self.body_scroll, 1)
         layout.addSpacing(14)
 
@@ -162,7 +138,7 @@ class ChapterPage(QWidget):
         self.primary_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.quiz_button = None
         if completed:
-            self.primary_button.setText('查看学习回顾 · 领取徽章  →' if index == total - 1 else '继续前进 · 下一站  →')
+            self.primary_button.setText('献上一束花 · 致敬长征英烈  →' if index == total - 1 else '出发下一段  →')
             self.primary_button.clicked.connect(self.advance_requested)
         elif can_quiz:
             self.primary_button.setText('继续答题  →')
@@ -186,16 +162,6 @@ class ChapterPage(QWidget):
                 actions.addWidget(self.quiz_button)
             layout.addLayout(actions)
 
-    def _queue_reveal(self, target: QLabel, expanded: bool) -> None:
-        if expanded:
-            self._expanded_target = target
-            # Let Qt finish wrapping the newly shown prose before scrolling.
-            self._reveal_timer.start(0)
-
-    def _reveal_expansion(self) -> None:
-        if self._expanded_target is not None and self._expanded_target.isVisible():
-            self.body_scroll.ensureWidgetVisible(self._expanded_target, 0, 12)
-
     @staticmethod
     def _link(text: str) -> QToolButton:
         button = QToolButton()
@@ -203,12 +169,4 @@ class ChapterPage(QWidget):
         button.setObjectName('journalLink')
         button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
-        return button
-
-    @classmethod
-    def _toggle(cls, text: str) -> QToolButton:
-        button = cls._link(text + '  ›')
-        button.setCheckable(True)
-        button.setAccessibleName('展开或收起' + text)
-        button.toggled.connect(lambda checked: button.setText(text + ('  收起' if checked else '  ›')))
         return button

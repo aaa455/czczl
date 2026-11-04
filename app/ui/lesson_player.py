@@ -319,9 +319,11 @@ class LearningEntrance(QWidget):
 class LearningPlayer(QFrame):
     back_requested = Signal()
     quiz_requested = Signal()
+    music_toggle_requested = Signal()
 
     def __init__(self, lesson: Lesson, node_name: str, content_dir: Path,
-                 renderers: SceneRendererRegistry | None = None):
+                 renderers: SceneRendererRegistry | None = None,
+                 music_enabled: bool | None = None):
         super().__init__()
         self.setObjectName("lessonPlayer")
         self.lesson, self.node_name, self.content_dir = lesson, node_name, content_dir
@@ -351,6 +353,13 @@ class LearningPlayer(QFrame):
         self.exit_button.setAccessibleName("退出学习，返回路线")
         self.exit_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.exit_button.clicked.connect(self.back_requested.emit)
+        self.music_button = None
+        if music_enabled is not None:
+            self.music_button = QPushButton(self)
+            self.music_button.setObjectName("lessonExit")
+            self.music_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.music_button.clicked.connect(self.music_toggle_requested.emit)
+            self.set_music_enabled(music_enabled)
         self._blur_timer = QTimer(self)
         self._blur_timer.setSingleShot(True)
         self._blur_timer.timeout.connect(self._refresh_glass)
@@ -391,8 +400,12 @@ class LearningPlayer(QFrame):
         self.glass.layout().activate()
         margin = max(22, round(self.width() * .022))
         self.exit_button.setGeometry(self.width() - margin - 96, margin, 96, 40)
+        if self.music_button is not None:
+            self.music_button.setGeometry(self.width() - margin - 200, margin, 96, 40)
         self.glass.raise_()
         self.exit_button.raise_()
+        if self.music_button is not None:
+            self.music_button.raise_()
         if not self.disposed:
             # The visible frame must never contain the previous scene's crop or
             # an old-sized panel. A queued pass only settles child layout events.
@@ -407,6 +420,11 @@ class LearningPlayer(QFrame):
                 self._glass_cache_key = key
             if self.entering and self.entrance is not None:
                 self.entrance.set_panel(self.glass.grab(), QRectF(self.glass.geometry()))
+
+    def set_music_enabled(self, enabled: bool) -> None:
+        if self.music_button is not None:
+            self.music_button.setText("音乐：开" if enabled else "音乐：关")
+            self.music_button.setAccessibleName("关闭背景音乐" if enabled else "播放背景音乐")
 
     def start(self, entrance_snapshot: QPixmap | None = None) -> None:
         if self.disposed:

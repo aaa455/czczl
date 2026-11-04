@@ -40,7 +40,8 @@ def main() -> int:
         store = JsonProgressStore(data_dir / f"{pack.id}.json")
         lessons = JsonLessonRepository(content_dir).load(pack)
         service = LearningService(pack, store, lessons=lessons)
-        window = MainWindow(service, content_dir=content_dir)
+        window = MainWindow(service, content_dir=content_dir,
+                            music_path=resource_root() / "assets" / "audio" / "background.flac")
     except (ContentError, ValueError, OSError) as exc:
         if args.smoke_check:
             args.smoke_check.parent.mkdir(parents=True, exist_ok=True)
@@ -71,6 +72,9 @@ def main() -> int:
                     "lesson_preview": window.player is not None,
                     "lesson_scenes": len(service.lessons[service.current_node().id].scenes),
                     "content_directory": str(content_dir), "data_directory": str(data_dir),
+                    "music_status": window.music_player.mediaStatus().name,
+                    "music_position_ms": window.music_player.position(),
+                    "music_error": window.music_player.errorString(),
                 }, ensure_ascii=False, indent=2), encoding="utf-8")
                 app.exit(0)
             except OSError:
