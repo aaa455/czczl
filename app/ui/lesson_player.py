@@ -30,6 +30,16 @@ class SceneVisual(QWidget):
 
     phase = Property(float, get_phase, set_phase)
 
+    def background_opacity(self) -> float:
+        return 1.0
+
+    def backdrop_image(self) -> QImage:
+        image = self.grab().toImage()
+        # All glass geometry is in logical window coordinates, including on HiDPI.
+        image.setDevicePixelRatio(1.0)
+        return image.scaled(self.size(), Qt.AspectRatioMode.IgnoreAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation)
+
 
 class ImageTextVisual(SceneVisual):
     def __init__(self, scene: LearningScene, directory: Path, node_name: str):
@@ -41,13 +51,30 @@ class ImageTextVisual(SceneVisual):
             "配图暂不可用 · 使用占位画面" if scene.image else "图片占位 · 待补充素材")
         self.setAccessibleName(scene.image_alt + "；" + self.image_state)
 
+    def background_opacity(self) -> float:
+        if self.scene.transition == "fade" and not getattr(self, "entrance_prepared", False):
+            return min(1.0, 0.12 + self._phase * self.scene.duration_ms / 600)
+        return 1.0
+
+    def backdrop_image(self) -> QImage:
+        # Render the final background once, independent of the live fade clock.
+        image = QImage(self.size(), QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        self._paint_background(painter)
+        painter.end()
+        return image
+
     def paintEvent(self, event):
         painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor("#a4afa2"))
+        painter.setOpacity(self.background_opacity())
+        self._paint_background(painter)
+        painter.end()
+
+    def _paint_background(self, painter: QPainter) -> None:
         painter.setRenderHints(QPainter.RenderHint.Antialiasing |
                                QPainter.RenderHint.SmoothPixmapTransform)
-        painter.fillRect(self.rect(), QColor("#a4afa2"))
-        if self.scene.transition == "fade" and not getattr(self, "entrance_prepared", False):
-            painter.setOpacity(min(1.0, 0.12 + self._phase * self.scene.duration_ms / 600))
         if not self.pixmap.isNull():
             # Deliberately stretch to the complete client area, as requested.
             painter.drawPixmap(QRectF(self.rect()), self.pixmap, QRectF(self.pixmap.rect()))
@@ -73,7 +100,6 @@ class ImageTextVisual(SceneVisual):
                 ridge.lineTo(self.width() + 10, self.height())
                 ridge.closeSubpath()
                 painter.fillPath(ridge, QColor(color))
-        painter.end()
 
 
 class SceneRendererRegistry:
@@ -110,6 +136,8 @@ class GlassTextPanel(QWidget):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._backdrop = QPixmap()
         self._backdrop_offset = QPoint()
+        self._backdrop_visual: SceneVisual | None = None
+        self._type_size: int | None = None
         self._press_position = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 20, 28, 20)
@@ -146,6 +174,9 @@ class GlassTextPanel(QWidget):
         self.hint.setVisible(bool(text))
 
     def set_type_size(self, size: int) -> None:
+        if self._type_size == size:
+            return
+        self._type_size = size
         self.setStyleSheet(
             "QWidget#glassPanel, QScrollArea, QScrollArea > QWidget > QWidget "
             "{ background: transparent; border: none; }"
@@ -161,17 +192,24 @@ class GlassTextPanel(QWidget):
         return gradient
 
     def refresh_backdrop(self, visual: SceneVisual) -> None:
-        # Capture only the renderer, never this overlay or other window controls.
-        # Cache per scene/resize/fade completion instead of recomputing each frame.
+        # Use a final background in logical coordinates, not a partially faded
+        # screen grab. The painter follows the live fade without rebuilding blur.
         padding = 32
         crop = self.geometry().adjusted(-padding, -padding, padding, padding).intersected(visual.rect())
-        frame = visual.grab().toImage().scaled(visual.size(), Qt.AspectRatioMode.IgnoreAspectRatio,
-                                              Qt.TransformationMode.SmoothTransformation)
-        source = QPixmap.fromImage(frame.copy(crop))
+        if crop.isEmpty():
+            return
+        frame = visual.backdrop_image()
+        frame.setDevicePixelRatio(1.0)
+        cropped = frame.copy(crop)
+        # Blur a smaller crop; its radius is scaled to preserve the visual size.
+        scale = min(1.0, 640 / cropped.width())
+        source = QPixmap.fromImage(cropped.scaled(
+            max(1, round(cropped.width() * scale)), max(1, round(cropped.height() * scale)),
+            Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation))
         scene = QGraphicsScene()
         item = QGraphicsPixmapItem(source)
         blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(22)
+        blur.setBlurRadius(22 * scale)
         blur.setBlurHints(QGraphicsBlurEffect.BlurHint.QualityHint)
         item.setGraphicsEffect(blur)
         scene.addItem(item)
@@ -185,19 +223,24 @@ class GlassTextPanel(QWidget):
         backdrop = QImage(self.size(), QImage.Format.Format_ARGB32_Premultiplied)
         backdrop.fill(Qt.GlobalColor.transparent)
         painter = QPainter(backdrop)
-        painter.drawImage(crop.topLeft() - self.pos(), result)
+        target = QRectF(crop.translated(-self.pos()))
+        painter.drawImage(target, result, QRectF(result.rect()))
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
         painter.fillRect(backdrop.rect(), self._gradient((255, 255, 255), 60, 255))
         painter.end()
         self._backdrop = QPixmap.fromImage(backdrop)
         self._backdrop_offset = QPoint()
+        self._backdrop_visual = visual
         self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         if not self._backdrop.isNull():
+            if self._backdrop_visual is not None:
+                painter.setOpacity(self._backdrop_visual.background_opacity())
             painter.drawPixmap(self._backdrop_offset, self._backdrop)
+            painter.setOpacity(1.0)
         painter.fillRect(self.rect(), self._gradient((20, 36, 31), self.EDGE_ALPHA, self.CENTRE_ALPHA))
         painter.setPen(QPen(self._gradient((247, 246, 229), 8, 51), 1))
         painter.drawLine(QPointF(0, .5), QPointF(self.width(), .5))
@@ -297,6 +340,7 @@ class LearningPlayer(QFrame):
         self.entrance: LearningEntrance | None = None
         self._entrance_offset = 0
         self._entrance_text_opacity = 1.0
+        self._glass_cache_key = None
         self.visual_host = QStackedWidget(self)
         self.glass = GlassTextPanel(self)
         self.scene_text = self.glass.text
@@ -327,6 +371,7 @@ class LearningPlayer(QFrame):
 
     def _layout_overlays(self) -> None:
         self.visual_host.setGeometry(self.rect())
+        self.visual_host.layout().activate()
         if self.entrance is not None:
             self.entrance.setGeometry(self.rect())
         width = self.width()
@@ -343,16 +388,23 @@ class LearningPlayer(QFrame):
         self.glass.setGeometry((self.width() - width) // 2,
                                self.height() - bottom - height,
                                width, height)
+        self.glass.layout().activate()
         margin = max(22, round(self.width() * .022))
         self.exit_button.setGeometry(self.width() - margin - 96, margin, 96, 40)
         self.glass.raise_()
         self.exit_button.raise_()
         if not self.disposed:
-            self._blur_timer.start(40)
+            # The visible frame must never contain the previous scene's crop or
+            # an old-sized panel. A queued pass only settles child layout events.
+            self._refresh_glass()
+            self._blur_timer.start(0)
 
     def _refresh_glass(self) -> None:
         if not self.disposed and hasattr(self, "visual") and self.visual.width() > 0:
-            self.glass.refresh_backdrop(self.visual)
+            key = (self.visual, self.visual.size(), self.glass.geometry())
+            if key != self._glass_cache_key:
+                self.glass.refresh_backdrop(self.visual)
+                self._glass_cache_key = key
             if self.entering and self.entrance is not None:
                 self.entrance.set_panel(self.glass.grab(), QRectF(self.glass.geometry()))
 
@@ -363,7 +415,6 @@ class LearningPlayer(QFrame):
         self._show_scene(0, defer_clock=self.entering)
         if self.entering:
             self.visual.entrance_prepared = True
-            self._backdrop_ready = True
             self._entrance_text_opacity = 0.0
             self._entrance_offset = 12
             self.entrance = LearningEntrance(entrance_snapshot, self)
@@ -441,7 +492,6 @@ class LearningPlayer(QFrame):
         self.visual = self.renderers.build(scene, self.content_dir, self.node_name)
         self.visual_host.addWidget(self.visual)
         self.visual_host.setCurrentWidget(self.visual)
-        self._backdrop_ready = scene.transition == "none"
         self.animation = QPropertyAnimation(self.visual, b"phase", self)
         self.animation.setDuration(scene.duration_ms)
         self.animation.setStartValue(0.0)
@@ -456,9 +506,7 @@ class LearningPlayer(QFrame):
         self._layout_overlays()
 
     def _frame_changed(self, value) -> None:
-        if not self._backdrop_ready and float(value) * self.lesson.scenes[self.index].duration_ms >= 600:
-            self._backdrop_ready = True
-            self._blur_timer.start(0)
+        self.glass.update()
 
     def _scene_finished(self) -> None:
         if not self.disposed and not self.paused:
