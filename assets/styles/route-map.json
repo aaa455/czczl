@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "background": "images/long-march-landscape.png",
+  "nodes": [
+    {"id": "departure", "position": [0.895, 0.825], "label_offset": [-24, 24], "label_anchor": "right"},
+    {"id": "xiangjiang", "position": [0.640, 0.800], "label_offset": [0, 24], "label_anchor": "center"},
+    {"id": "liping", "position": [0.490, 0.735], "label_offset": [22, 10], "label_anchor": "left"},
+    {"id": "zunyi", "position": [0.425, 0.630], "label_offset": [25, -15], "label_anchor": "left"},
+    {"id": "chishui", "position": [0.365, 0.595], "label_offset": [-20, -43], "label_anchor": "right"},
+    {"id": "river-crossings", "position": [0.225, 0.455], "label_offset": [26, -12], "label_anchor": "left"},
+    {"id": "snow-grassland", "position": [0.275, 0.290], "label_offset": [26, -14], "label_anchor": "left"},
+    {"id": "reunion", "position": [0.445, 0.135], "label_offset": [26, -10], "label_anchor": "left"}
+  ],
+  "edges": [
+    [[[0.895, 0.825], [0.810, 0.800], [0.750, 0.890], [0.640, 0.800]]],
+    [[[0.640, 0.800], [0.580, 0.790], [0.540, 0.760], [0.490, 0.735]]],
+    [[[0.490, 0.735], [0.460, 0.710], [0.450, 0.670], [0.425, 0.630]]],
+    [[[0.425, 0.630], [0.425, 0.545], [0.310, 0.620], [0.365, 0.595]]],
+    [[[0.365, 0.595], [0.465, 0.545], [0.465, 0.790], [0.280, 0.720]],
+     [[0.280, 0.720], [0.180, 0.680], [0.220, 0.610], [0.225, 0.455]]],
+    [[[0.225, 0.455], [0.180, 0.390], [0.240, 0.340], [0.275, 0.290]]],
+    [[[0.275, 0.290], [0.330, 0.260], [0.360, 0.130], [0.445, 0.135]]]
+  ]
+}

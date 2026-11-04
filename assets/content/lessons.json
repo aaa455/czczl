@@ -1,0 +1,293 @@
+{
+  "schema_version": 1,
+  "lessons": [
+    {
+      "node_id": "departure",
+      "scenes": [
+        {
+          "id": "background",
+          "title": "战略转移背景",
+          "text": "1934年10月，第五次反“围剿”失败，中央苏区不断压缩。在“左”倾错误军事指挥影响下，中央红军难以在内线打破国民党军队的重兵围困，被迫实施战略转移。最初的计划是前往湘西，与红二、六军团会合。瑞金作为中央苏区的核心和党中央、中革军委机关所在地，承担了转移部署、人员编组与物资调配等工作。",
+          "image": "",
+          "image_alt": "瑞金·于都 · 战略转移背景学习配图占位",
+          "duration_ms": 45000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "event",
+          "title": "于都集结渡河",
+          "text": "于都是中央红军长征的主要集结出发地。红军各部秘密向于都河沿岸集中，准备渡河转移。当地群众全力支援，捐献木料、门板搭建浮桥，协助红军渡河、隐蔽行踪。军民协力，让数万红军有序渡过于都河，踏上长征征程。",
+          "image": "",
+          "image_alt": "瑞金·于都 · 于都集结渡河学习配图占位",
+          "duration_ms": 35000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "meaning",
+          "title": "出发后的思考",
+          "text": "这是一场在严峻形势逼迫下实施的战略转移。出发时，部队携带大量辎重物资，队伍笨重迟缓，影响了行军机动。这段历史启示我们：坚定的理想信念是前行的根基，周密科学的行动规划同样重要。准备必须贴合实际需要，才能把信念转化为行动优势。",
+          "image": "",
+          "image_alt": "瑞金·于都 · 出发后的思考学习配图占位",
+          "duration_ms": 35000,
+          "transition": "fade",
+          "type": "image_text"
+        }
+      ],
+      "summary": "1934年10月，第五次反“围剿”失败后，中央红军被迫实施战略转移，最初计划前往湘西与红二、六军团会合。瑞金承担转移部署等工作，于都是主要集结出发地，当地群众支援红军渡河。出发初期大量辎重影响机动，提醒我们把坚定信念与贴合实际的行动规划结合起来。"
+    },
+    {
+      "node_id": "xiangjiang",
+      "scenes": [
+        {
+          "id": "background",
+          "title": "历史背景",
+          "text": "【学习文字占位】这里将介绍事件发生的时间、地点与背景。",
+          "image": "",
+          "image_alt": "湘江战役 · 历史背景学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "event",
+          "title": "事件经过",
+          "text": "【学习文字占位】这里将结合配图，讲述本节点的重要史事。",
+          "image": "",
+          "image_alt": "湘江战役 · 事件经过学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "meaning",
+          "title": "理解与思考",
+          "text": "【学习文字占位】这里将梳理事件意义，并联系接下来的知识检验。",
+          "image": "",
+          "image_alt": "湘江战役 · 理解与思考学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        }
+      ],
+      "summary": "【学习小结占位】这里将归纳本段需要掌握的知识。当前版本只演示学习流程。"
+    },
+    {
+      "node_id": "liping",
+      "scenes": [
+        {
+          "id": "background",
+          "title": "历史背景",
+          "text": "【学习文字占位】这里将介绍事件发生的时间、地点与背景。",
+          "image": "",
+          "image_alt": "通道·黎平 · 历史背景学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "event",
+          "title": "事件经过",
+          "text": "【学习文字占位】这里将结合配图，讲述本节点的重要史事。",
+          "image": "",
+          "image_alt": "通道·黎平 · 事件经过学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "meaning",
+          "title": "理解与思考",
+          "text": "【学习文字占位】这里将梳理事件意义，并联系接下来的知识检验。",
+          "image": "",
+          "image_alt": "通道·黎平 · 理解与思考学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        }
+      ],
+      "summary": "【学习小结占位】这里将归纳本段需要掌握的知识。当前版本只演示学习流程。"
+    },
+    {
+      "node_id": "zunyi",
+      "scenes": [
+        {
+          "id": "background",
+          "title": "历史背景",
+          "text": "【学习文字占位】这里将介绍事件发生的时间、地点与背景。",
+          "image": "",
+          "image_alt": "遵义会议 · 历史背景学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "event",
+          "title": "事件经过",
+          "text": "【学习文字占位】这里将结合配图，讲述本节点的重要史事。",
+          "image": "",
+          "image_alt": "遵义会议 · 事件经过学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "meaning",
+          "title": "理解与思考",
+          "text": "【学习文字占位】这里将梳理事件意义，并联系接下来的知识检验。",
+          "image": "",
+          "image_alt": "遵义会议 · 理解与思考学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        }
+      ],
+      "summary": "【学习小结占位】这里将归纳本段需要掌握的知识。当前版本只演示学习流程。"
+    },
+    {
+      "node_id": "chishui",
+      "scenes": [
+        {
+          "id": "background",
+          "title": "历史背景",
+          "text": "【学习文字占位】这里将介绍事件发生的时间、地点与背景。",
+          "image": "",
+          "image_alt": "四渡赤水 · 历史背景学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "event",
+          "title": "事件经过",
+          "text": "【学习文字占位】这里将结合配图，讲述本节点的重要史事。",
+          "image": "",
+          "image_alt": "四渡赤水 · 事件经过学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "meaning",
+          "title": "理解与思考",
+          "text": "【学习文字占位】这里将梳理事件意义，并联系接下来的知识检验。",
+          "image": "",
+          "image_alt": "四渡赤水 · 理解与思考学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        }
+      ],
+      "summary": "【学习小结占位】这里将归纳本段需要掌握的知识。当前版本只演示学习流程。"
+    },
+    {
+      "node_id": "river-crossings",
+      "scenes": [
+        {
+          "id": "background",
+          "title": "历史背景",
+          "text": "【学习文字占位】这里将介绍事件发生的时间、地点与背景。",
+          "image": "",
+          "image_alt": "金沙江·泸定 · 历史背景学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "event",
+          "title": "事件经过",
+          "text": "【学习文字占位】这里将结合配图，讲述本节点的重要史事。",
+          "image": "",
+          "image_alt": "金沙江·泸定 · 事件经过学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "meaning",
+          "title": "理解与思考",
+          "text": "【学习文字占位】这里将梳理事件意义，并联系接下来的知识检验。",
+          "image": "",
+          "image_alt": "金沙江·泸定 · 理解与思考学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        }
+      ],
+      "summary": "【学习小结占位】这里将归纳本段需要掌握的知识。当前版本只演示学习流程。"
+    },
+    {
+      "node_id": "snow-grassland",
+      "scenes": [
+        {
+          "id": "background",
+          "title": "历史背景",
+          "text": "【学习文字占位】这里将介绍事件发生的时间、地点与背景。",
+          "image": "",
+          "image_alt": "雪山·草地 · 历史背景学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "event",
+          "title": "事件经过",
+          "text": "【学习文字占位】这里将结合配图，讲述本节点的重要史事。",
+          "image": "",
+          "image_alt": "雪山·草地 · 事件经过学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "meaning",
+          "title": "理解与思考",
+          "text": "【学习文字占位】这里将梳理事件意义，并联系接下来的知识检验。",
+          "image": "",
+          "image_alt": "雪山·草地 · 理解与思考学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        }
+      ],
+      "summary": "【学习小结占位】这里将归纳本段需要掌握的知识。当前版本只演示学习流程。"
+    },
+    {
+      "node_id": "reunion",
+      "scenes": [
+        {
+          "id": "background",
+          "title": "历史背景",
+          "text": "【学习文字占位】这里将介绍事件发生的时间、地点与背景。",
+          "image": "",
+          "image_alt": "会宁·将台堡 · 历史背景学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "event",
+          "title": "事件经过",
+          "text": "【学习文字占位】这里将结合配图，讲述本节点的重要史事。",
+          "image": "",
+          "image_alt": "会宁·将台堡 · 事件经过学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        },
+        {
+          "id": "meaning",
+          "title": "理解与思考",
+          "text": "【学习文字占位】这里将梳理事件意义，并联系接下来的知识检验。",
+          "image": "",
+          "image_alt": "会宁·将台堡 · 理解与思考学习配图",
+          "duration_ms": 12000,
+          "transition": "fade",
+          "type": "image_text"
+        }
+      ],
+      "summary": "【学习小结占位】这里将归纳本段需要掌握的知识。当前版本只演示学习流程。"
+    }
+  ]
+}

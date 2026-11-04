@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import tempfile
 
-from app.models import Attempt, Progress
+from app.models import Attempt, Progress, QuizSession
 
 
 class JsonProgressStore:
@@ -42,7 +42,31 @@ class JsonProgressStore:
                         or (item["first_correct"] and not item["mastered"])):
                     raise ValueError("答题记录字段无效")
                 answers[qid] = Attempt(item["first_correct"], item["mastered"], item["submissions"])
-            return Progress(pack_id, signature, answers)
+            learned = raw.get("learned_lessons", {})
+            if not isinstance(learned, dict) or any(
+                    not isinstance(k, str) or not isinstance(v, str) for k, v in learned.items()):
+                raise ValueError("学习完成记录无效")
+            sessions_raw = raw.get("quiz_sessions", {})
+            if not isinstance(sessions_raw, dict):
+                raise ValueError("抽题记录无效")
+            sessions = {}
+            for node_id, item in sessions_raw.items():
+                if not isinstance(node_id, str) or not isinstance(item, dict):
+                    raise ValueError("抽题记录字段无效")
+                ids = item.get("question_ids")
+                orders = item.get("option_orders")
+                if (not isinstance(ids, list) or not ids
+                        or any(not isinstance(qid, str) or not qid for qid in ids)
+                        or len(set(ids)) != len(ids) or not isinstance(orders, dict)
+                        or set(orders) != set(ids)):
+                    raise ValueError("抽题编号或选项记录无效")
+                for order in orders.values():
+                    if (not isinstance(order, list) or len(order) < 2
+                            or any(not isinstance(oid, str) or not oid for oid in order)
+                            or len(set(order)) != len(order)):
+                        raise ValueError("随机选项记录无效")
+                sessions[node_id] = QuizSession(tuple(ids), {qid: tuple(order) for qid, order in orders.items()})
+            return Progress(pack_id, signature, answers, learned, sessions)
         except (ValueError, UnicodeError, TypeError):
             self._archive("存档格式异常")
             return fresh

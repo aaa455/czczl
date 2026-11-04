@@ -38,6 +38,9 @@ class JsonContentRepository:
             raise ContentError("内容包id仅允许英文、数字、下划线和连字符，最长64位")
         if raw.get("review_status") not in ("draft", "reviewed"):
             raise ContentError("review_status 必须为 draft 或 reviewed")
+        quiz_size = raw.get("quiz_size")
+        if quiz_size is not None and (type(quiz_size) is not int or quiz_size < 1):
+            raise ContentError("quiz_size 必须为正整数")
         if not isinstance(raw.get("nodes"), list) or not raw["nodes"]:
             raise ContentError("至少需要一个学习节点")
         node_ids: set[str] = set()
@@ -88,4 +91,4 @@ class JsonContentRepository:
                               _text(data, "event"), _text(data, "spirit"),
                               _text(data, "modern"), tuple(sources), tuple(questions)))
         return ContentPack(_text(raw, "id"), _text(raw, "version"), _text(raw, "title"),
-                           _text(raw, "scope"), _text(raw, "review_status"), tuple(nodes))
+                           _text(raw, "scope"), _text(raw, "review_status"), tuple(nodes), quiz_size)

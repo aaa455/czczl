@@ -9,6 +9,8 @@
 7. PR写明改动、验证命令和实际结果、已知问题。没有运行的测试注明未运行。
 8. 合并使用Squash，合并后同步 `main`，再建下一任务分支。
 
+学习过场：A负责 `assets/content/lessons.json` 的文字与小结；C负责同目录images下的图片，以及已认领的播放器排版；B负责 `app/lessons.py`、`app/ui/lesson_player.py`、学习记录与答题衔接。图文替换不需要修改程序；字段和分镜类型变更先说明影响。
+
 ## 示例
 
 ```powershell

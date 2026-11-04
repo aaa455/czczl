@@ -5,18 +5,30 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.content import JsonContentRepository
 from app.learning import default_registry
+from app.lessons import JsonLessonRepository
 
 
 def main() -> int:
     directory = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[1] / "assets/content"
     try:
         pack = JsonContentRepository(directory).load()
+        lessons = JsonLessonRepository(directory).load(pack)
         registry = default_registry()
         for node in pack.nodes:
             for question in node.questions:
                 if not registry.supports(question.kind):
                     raise ValueError(f"尚未注册题型：{question.kind}")
+            for scene in lessons[node.id].scenes:
+                if scene.kind != "image_text":
+                    raise ValueError(f"尚未注册分镜类型：{scene.kind}")
         print(f"PASS: {len(pack.nodes)} nodes, {sum(len(n.questions) for n in pack.nodes)} questions")
+        if pack.quiz_size is not None:
+            total = sum(min(pack.quiz_size, len(n.questions)) for n in pack.nodes)
+            print(f"PASS: random quiz size {pack.quiz_size}, {total} questions per journey; options shuffled")
+            for node in pack.nodes:
+                if len(node.questions) < pack.quiz_size:
+                    print(f"NOTE: {node.id} has fewer questions; using all {len(node.questions)}")
+        print(f"PASS: {sum(len(lesson.scenes) for lesson in lessons.values())} learning scenes")
         if pack.review_status == "draft":
             print("NOTE: Content is a draft. Historical sources still require team review.")
         return 0
