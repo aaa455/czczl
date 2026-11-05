@@ -23,6 +23,7 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas, [],
     name="ZuJiChangZheng",
+    icon=str(project / "assets" / "icons" / "app-icon.ico"),
     debug=False,
     strip=False,
     upx=False,

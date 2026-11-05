@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 from PySide6.QtCore import QStandardPaths, QTimer
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app.content import ContentError, JsonContentRepository
@@ -30,6 +30,7 @@ def main() -> int:
     app.setApplicationName("ZuJiChangZheng")
     app.setOrganizationName("ZuJiChangZhengTeam")
     app.setFont(QFont("Microsoft YaHei UI", 10))
+    app.setWindowIcon(QIcon(str(resource_root() / "assets" / "icons" / "app-icon.png")))
     stylesheet = resource_root() / "assets" / "styles" / "theme.qss"
     try:
         app.setStyleSheet(stylesheet.read_text(encoding="utf-8"))
